@@ -1,0 +1,100 @@
+HYBRID ATTENTIVENESS ANALYZER - INTEGRATION COMPLETE
+====================================================
+
+CHANGES MADE:
+-------------
+
+1. api_server.py
+   - Changed import from SimpleAttentivenessAnalyzer to HybridAttentivenessAnalyzer
+   - Updated get_analytics_engine() to initialize HybridAttentivenessAnalyzer with proper thresholds:
+     * focus_threshold: 0.65
+     * yaw_threshold: 30.0°
+     * pitch_threshold: 25.0°
+     * roll_threshold: 35.0°
+     * consecutive_distraction_threshold: 3 frames
+   - Updated /api/debug/predict endpoint to work with hybrid analyzer's response format
+
+2. hybrid_attentiveness.py
+   - Fixed pitch angle calculation (was showing ~173° instead of correct values)
+   - Added normalization to handle inverted pitch angles
+   - Now correctly calculates yaw, pitch, roll angles
+
+TESTING RESULTS:
+----------------
+
+✅ Hybrid analyzer imports successfully
+✅ Single image analysis works correctly
+✅ Full student folder analysis works correctly
+✅ API server starts with hybrid analyzer
+✅ API endpoints return correct data structure
+✅ Frontend compatible with response format
+
+SAMPLE OUTPUT:
+--------------
+
+Student 1:
+- Status: Focused (100%)
+- Head pose: yaw=2°, pitch=7°, roll=-3°
+- Method: 100% head pose (26/26 frames)
+- Pose reliability: 100%
+
+Student 3:
+- Status: Not Focused (4.8%)
+- Head pose: yaw=15°, pitch=25°, roll=4°
+- Method: 32% head pose (8/25), 68% fallback (17/25)
+- Pose reliability: 32%
+
+Classroom Summary:
+- Total students: 2
+- Focused: 1 (50%)
+- Not Focused: 1 (50%)
+- Average attentiveness: 52.4%
+- Average pose reliability: 66%
+
+HOW IT WORKS:
+-------------
+
+PRIMARY SIGNAL: Head Pose Estimation
+- Uses MediaPipe Face Mesh + solvePnP
+- Calculates yaw, pitch, roll angles
+- Focused if: |yaw| ≤ 30°, |pitch| ≤ 25°, |roll| ≤ 35°
+- Only used if pose confidence > 0.3
+
+FALLBACK SIGNAL: Image Quality
+- Used when head pose fails or confidence < 0.3
+- Analyzes sharpness, brightness, contrast
+- Conservative threshold: quality > 0.4 for focused
+- Lower confidence score (0.5x) to indicate fallback
+
+TEMPORAL SMOOTHING:
+- Requires 3 consecutive distraction frames before marking unfocused
+- Prevents flickering from single bad frames
+- Provides stable results over time
+
+API SERVER:
+-----------
+
+Running on: http://localhost:5001
+
+Endpoints:
+- POST /api/analyze - Analyze all students
+- GET /api/student/<id> - Get specific student details
+- POST /api/debug/predict - Test single image
+- GET /api/summary - Get cached summary
+- GET /api/stats - Get data statistics
+
+Frontend Dashboard:
+- http://localhost:5001/
+- Displays engagement scores, status badges
+- Shows student cards with breakdown
+- Classroom summary statistics
+
+NEXT STEPS:
+-----------
+
+1. Test with real classroom video feed
+2. Adjust thresholds based on actual classroom conditions
+3. Add real-time visualization overlay
+4. Consider adding eye closure detection
+5. Optimize for multiple students simultaneously
+6. Add temporal analytics (focus over time)
