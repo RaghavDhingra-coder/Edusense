@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EduSense AI - Integrated Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="container">
+            <div class="header-content">
+                <div class="logo">
+                    <i class="fas fa-graduation-cap"></i>
+                    <h1>EduSense AI</h1>
+                </div>
+                <div class="header-actions">
+                    <button id="startCameraBtn" class="btn btn-success">
+                        <i class="fas fa-video"></i>
+                        Start Camera
+                    </button>
+                    <button id="stopCameraBtn" class="btn btn-danger" style="display: none;">
+                        <i class="fas fa-stop"></i>
+                        Stop Camera
+                    </button>
+                    <button id="analyzeBtn" class="btn btn-primary">
+                        <i class="fas fa-chart-line"></i>
+                        Analyze Classroom
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <div class="container">
+            
+            <!-- Live Video Feed Section -->
+            <div id="videoSection" class="video-section">
+                <h2 class="section-title">
+                    <i class="fas fa-video"></i>
+                    Live Classroom Feed
+                </h2>
+                <div class="video-container">
+                    <img id="videoFeed" src="" alt="Camera Feed" class="video-feed">
+                    <div id="videoPlaceholder" class="video-placeholder">
+                        <i class="fas fa-video-slash"></i>
+                        <p>Camera Not Started</p>
+                        <p class="video-hint">Click "Start Camera" to begin tracking</p>
+                    </div>
+                    <div id="videoStats" class="video-stats" style="display: none;">
+                        <div class="stat-item">
+                            <span class="stat-label">FPS:</span>
+                            <span class="stat-value" id="statFps">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Faces:</span>
+                            <span class="stat-value" id="statFaces">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Students:</span>
+                            <span class="stat-value" id="statStudents">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Images:</span>
+                            <span class="stat-value" id="statImages">0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Loading State -->
+            <div id="loadingState" class="loading-state" style="display: none;">
+                <div class="loading-spinner"></div>
+                <h2>Analyzing Classroom Engagement...</h2>
+                <p>Processing student images and computing analytics</p>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <p class="progress-text" id="progressText">0%</p>
+            </div>
+
+            <!-- Empty State -->
+            <div id="emptyState" class="empty-state" style="display: none;">
+                <i class="fas fa-chart-bar"></i>
+                <h2>No Analysis Yet</h2>
+                <p>Start the camera to collect student data, then click "Analyze Classroom"</p>
+            </div>
+
+            <!-- Dashboard Content -->
+            <div id="dashboardContent" style="display: none;">
+                
+                <!-- Summary Cards -->
+                <div class="summary-section">
+                    <h2 class="section-title">
+                        <i class="fas fa-chart-pie"></i>
+                        Classroom Overview
+                    </h2>
+                    <div class="summary-cards">
+                        <div class="summary-card">
+                            <div class="card-icon blue">
+                                <i class="fas fa-users"></i>
+                            </div>
+                            <div class="card-content">
+                                <h3 id="totalStudents">0</h3>
+                                <p>Total Students</p>
+                            </div>
+                        </div>
+
+                        <div class="summary-card">
+                            <div class="card-icon green">
+                                <i class="fas fa-check-circle"></i>
+                            </div>
+                            <div class="card-content">
+                                <h3 id="focusedStudents">0</h3>
+                                <p>Focused Students</p>
+                            </div>
+                        </div>
+
+                        <div class="summary-card">
+                            <div class="card-icon red">
+                                <i class="fas fa-exclamation-circle"></i>
+                            </div>
+                            <div class="card-content">
+                                <h3 id="distractedStudents">0</h3>
+                                <p>Unfocused Students</p>
+                            </div>
+                        </div>
+
+                        <div class="summary-card">
+                            <div class="card-icon purple">
+                                <i class="fas fa-percentage"></i>
+                            </div>
+                            <div class="card-content">
+                                <h3 id="avgEngagement">0%</h3>
+                                <p>Average Engagement</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Engagement Distribution -->
+                <div class="distribution-section">
+                    <h2 class="section-title">
+                        <i class="fas fa-chart-bar"></i>
+                        Engagement Distribution
+                    </h2>
+                    <div class="distribution-chart">
+                        <div class="chart-bar">
+                            <div class="bar-label">Focused</div>
+                            <div class="bar-container">
+                                <div class="bar bar-success" id="focusedBar" style="width: 0%"></div>
+                                <span class="bar-value" id="focusedPercent">0%</span>
+                            </div>
+                        </div>
+                        <div class="chart-bar">
+                            <div class="bar-label">Moderately Focused</div>
+                            <div class="bar-container">
+                                <div class="bar bar-warning" id="neutralBar" style="width: 0%"></div>
+                                <span class="bar-value" id="neutralPercent">0%</span>
+                            </div>
+                        </div>
+                        <div class="chart-bar">
+                            <div class="bar-label">Unfocused</div>
+                            <div class="bar-container">
+                                <div class="bar bar-danger" id="distractedBar" style="width: 0%"></div>
+                                <span class="bar-value" id="distractedPercent">0%</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Student Cards -->
+                <div class="students-section">
+                    <h2 class="section-title">
+                        <i class="fas fa-user-graduate"></i>
+                        Individual Student Analytics
+                    </h2>
+                    <div id="studentGrid" class="student-grid">
+                        <!-- Student cards will be inserted here -->
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <p>&copy; 2024 EduSense AI - Integrated Classroom Monitoring</p>
+        </div>
+    </footer>
+
+    <script src="app_integrated.js"></script>
+</body>
+</html>

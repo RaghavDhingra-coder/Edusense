@@ -78,6 +78,67 @@ class FaceReID:
             print("   ReID will be disabled. Install with: pip install insightface onnxruntime")
             self.app = None
     
+    def reset_session(self):
+        """
+        Reset session-specific data while preserving persistent identity database
+        
+        CLEARS (temporary session data):
+        - Track ID to Student ID mapping
+        - Embedding cache
+        - Active track states
+        
+        PRESERVES (persistent identity data):
+        - Student embeddings (for cross-session recognition)
+        - Student last seen timestamps
+        - Model instance
+        
+        This allows starting a fresh session while maintaining identity memory
+        """
+        print("🔄 Resetting ReID session state...")
+        
+        # Clear temporary session mappings
+        self.track_to_student.clear()
+        self.embedding_cache.clear()
+        
+        # Reset session statistics
+        self.embedding_count = 0
+        self.match_count = 0
+        # Note: new_student_count is NOT reset (persistent across sessions)
+        
+        print("✅ ReID session state reset")
+        print(f"   Preserved {len(self.student_embeddings)} student identities")
+    
+    def _initialize_model(self):
+        """
+        Initialize InsightFace model for face recognition
+        Uses lightweight model for real-time performance
+        """
+        try:
+            print("🔄 Loading InsightFace model for ReID...")
+            
+            import insightface
+            from insightface.app import FaceAnalysis
+            
+            # Use lightweight model for speed
+            # 'buffalo_l' is accurate but slower
+            # 'buffalo_s' is faster and good for classroom
+            self.app = FaceAnalysis(
+                name='buffalo_s',
+                providers=['CPUExecutionProvider']  # Use CPU for compatibility
+            )
+            
+            # Prepare model with target size
+            self.app.prepare(ctx_id=0, det_size=(160, 160))
+            
+            print("✅ InsightFace model loaded successfully")
+            print(f"   Similarity threshold: {self.similarity_threshold}")
+            print(f"   Using lightweight 'buffalo_s' model for speed")
+            
+        except Exception as e:
+            print(f"⚠️  Failed to load InsightFace: {str(e)}")
+            print("   ReID will be disabled. Install with: pip install insightface onnxruntime")
+            self.app = None
+    
     def extract_embedding(self, face_image):
         """
         Extract face embedding from image
