@@ -4,10 +4,13 @@ const API_BASE_URL = 'http://localhost:8080/api';
 // DOM Elements
 const startCameraBtn = document.getElementById('startCameraBtn');
 const stopCameraBtn = document.getElementById('stopCameraBtn');
+const uploadVideoBtn = document.getElementById('uploadVideoBtn');
 const analyzeBtn = document.getElementById('analyzeBtn');
 const videoFeed = document.getElementById('videoFeed');
 const videoPlaceholder = document.getElementById('videoPlaceholder');
 const videoStats = document.getElementById('videoStats');
+const videoProgress = document.getElementById('videoProgress');
+const videoSectionTitle = document.getElementById('videoSectionTitle');
 const loadingState = document.getElementById('loadingState');
 const emptyState = document.getElementById('emptyState');
 const dashboardContent = document.getElementById('dashboardContent');
@@ -15,18 +18,70 @@ const studentGrid = document.getElementById('studentGrid');
 const progressFill = document.getElementById('progressFill');
 const progressText = document.getElementById('progressText');
 
+// Upload Modal Elements
+const uploadModal = document.getElementById('uploadModal');
+const closeModalBtn = document.getElementById('closeModalBtn');
+const uploadArea = document.getElementById('uploadArea');
+const videoFileInput = document.getElementById('videoFileInput');
+const browseBtn = document.getElementById('browseBtn');
+const uploadProgress = document.getElementById('uploadProgress');
+const uploadSuccess = document.getElementById('uploadSuccess');
+const startProcessingBtn = document.getElementById('startProcessingBtn');
+const uploadProgressFill = document.getElementById('uploadProgressFill');
+const uploadProgressText = document.getElementById('uploadProgressText');
+const uploadFileName = document.getElementById('uploadFileName');
+const uploadFileSize = document.getElementById('uploadFileSize');
+
 // State
 let cameraRunning = false;
+let videoProcessing = false;
 let statsInterval = null;
 let isAnalyzing = false;
 let currentSessionId = null;
+let uploadedVideoPath = null;
+let sourceType = null; // 'webcam' or 'video'
+
+// Debug function - can be called from browser console
+window.debugUploadState = function() {
+    console.log('═══════════════════════════════════════════════════════');
+    console.log('DEBUG: UPLOAD STATE');
+    console.log('═══════════════════════════════════════════════════════');
+    console.log('uploadedVideoPath:', uploadedVideoPath);
+    console.log('Type:', typeof uploadedVideoPath);
+    console.log('Value:', uploadedVideoPath);
+    console.log('Is null?', uploadedVideoPath === null);
+    console.log('Is undefined?', uploadedVideoPath === undefined);
+    console.log('Truthy?', !!uploadedVideoPath);
+    console.log('═══════════════════════════════════════════════════════');
+    return uploadedVideoPath;
+};
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
     // Set up event listeners
     startCameraBtn.addEventListener('click', startCamera);
     stopCameraBtn.addEventListener('click', stopCamera);
+    uploadVideoBtn.addEventListener('click', openUploadModal);
     analyzeBtn.addEventListener('click', analyzeClassroom);
+    
+    // Upload modal listeners
+    closeModalBtn.addEventListener('click', closeUploadModal);
+    browseBtn.addEventListener('click', () => videoFileInput.click());
+    videoFileInput.addEventListener('change', handleFileSelect);
+    startProcessingBtn.addEventListener('click', startVideoProcessing);
+    
+    // Drag and drop
+    uploadArea.addEventListener('dragover', handleDragOver);
+    uploadArea.addEventListener('dragleave', handleDragLeave);
+    uploadArea.addEventListener('drop', handleDrop);
+    uploadArea.addEventListener('click', () => videoFileInput.click());
+    
+    // Close modal on outside click
+    uploadModal.addEventListener('click', (e) => {
+        if (e.target === uploadModal) {
+            closeUploadModal();
+        }
+    });
     
     // Check initial camera status
     checkCameraStatus();
@@ -210,6 +265,26 @@ function startStatsPolling() {
                 document.getElementById('statFaces').textContent = stats.active_tracks || 0;
                 document.getElementById('statStudents').textContent = stats.total_students || 0;
                 document.getElementById('statImages').textContent = stats.total_images || 0;
+                
+                // Update video progress for video files
+                if (stats.is_video_file && videoProgress) {
+                    videoProgress.style.display = 'block';
+                    document.getElementById('progressFrames').textContent = 
+                        `Frame ${stats.frame_number} / ${stats.total_frames}`;
+                    document.getElementById('progressPercent').textContent = 
+                        `${Math.round(stats.progress_percent)}%`;
+                    document.getElementById('videoProgressFill').style.width = 
+                        `${stats.progress_percent}%`;
+                    
+                    // Check if processing is complete
+                    if (stats.processing_complete) {
+                        showNotification('Video processing complete!', 'success');
+                        stopStatsPolling();
+                        videoProcessing = false;
+                        stopCameraBtn.style.display = 'none';
+                        analyzeBtn.disabled = false;
+                    }
+                }
             }
         } catch (error) {
             console.error('Stats polling error:', error);
@@ -529,4 +604,457 @@ function formatStudentId(id) {
 function showNotification(message, type = 'info') {
     console.log(`[${type.toUpperCase()}] ${message}`);
     // Could add toast notifications here
+}
+
+
+// ============================================================================
+// VIDEO UPLOAD FUNCTIONS
+// ============================================================================
+
+/**
+ * Open upload modal
+ */
+function openUploadModal() {
+    uploadModal.style.display = 'flex';
+    resetUploadModal();
+}
+
+/**
+ * Close upload modal
+ */
+function closeUploadModal() {
+    uploadModal.style.display = 'none';
+    resetUploadModal();
+}
+
+/**
+ * Reset upload modal to initial state
+ */
+function resetUploadModal() {
+    console.log('🔄 Resetting upload modal UI');
+    uploadArea.style.display = 'block';
+    uploadProgress.style.display = 'none';
+    uploadSuccess.style.display = 'none';
+    videoFileInput.value = '';
+    // DO NOT reset uploadedVideoPath here - it needs to persist!
+    console.log('📁 uploadedVideoPath preserved:', uploadedVideoPath);
+}
+
+/**
+ * Handle drag over
+ */
+function handleDragOver(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    uploadArea.classList.add('drag-over');
+}
+
+/**
+ * Handle drag leave
+ */
+function handleDragLeave(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    uploadArea.classList.remove('drag-over');
+}
+
+/**
+ * Handle drop
+ */
+async function handleDrop(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    uploadArea.classList.remove('drag-over');
+    
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+        console.log('📁 File dropped:', files[0].name);
+        await handleFile(files[0]);
+    }
+}
+
+/**
+ * Handle file select
+ */
+async function handleFileSelect(e) {
+    const files = e.target.files;
+    if (files.length > 0) {
+        console.log('📁 File selected from input:', files[0].name);
+        await handleFile(files[0]);
+    }
+}
+
+/**
+ * Handle file upload
+ */
+async function handleFile(file) {
+    console.log('═══════════════════════════════════════════════════════');
+    console.log('📤 STARTING FILE UPLOAD');
+    console.log('═══════════════════════════════════════════════════════');
+    console.log('📁 File name:', file.name);
+    console.log('📊 File size:', (file.size / (1024 * 1024)).toFixed(2), 'MB');
+    console.log('📝 File type:', file.type);
+    console.log('📁 uploadedVideoPath BEFORE upload:', uploadedVideoPath);
+    
+    // Validate file type
+    const validTypes = ['video/mp4', 'video/avi', 'video/quicktime', 'video/x-matroska', 
+                       'video/x-flv', 'video/x-ms-wmv', 'video/webm'];
+    if (!validTypes.includes(file.type) && !file.name.match(/\.(mp4|avi|mov|mkv|flv|wmv|webm)$/i)) {
+        alert('Invalid file type. Please upload a video file (MP4, AVI, MOV, MKV, FLV, WMV, WEBM)');
+        return;
+    }
+    
+    // Validate file size (500MB max)
+    const maxSize = 500 * 1024 * 1024;
+    if (file.size > maxSize) {
+        alert('File too large. Maximum size is 500MB');
+        return;
+    }
+    
+    // Show upload progress
+    uploadArea.style.display = 'none';
+    uploadProgress.style.display = 'block';
+    uploadFileName.textContent = file.name;
+    uploadFileSize.textContent = `${(file.size / (1024 * 1024)).toFixed(2)} MB`;
+    
+    // Create form data
+    const formData = new FormData();
+    formData.append('video', file);
+    
+    console.log('📤 Sending upload request...');
+    
+    // Upload with progress tracking using Promise wrapper
+    try {
+        const result = await new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            
+            xhr.upload.addEventListener('progress', (e) => {
+                if (e.lengthComputable) {
+                    const percent = (e.loaded / e.total) * 100;
+                    uploadProgressFill.style.width = `${percent}%`;
+                    uploadProgressText.textContent = `Uploading... ${Math.round(percent)}%`;
+                    if (percent % 25 === 0) {
+                        console.log(`📤 Upload progress: ${Math.round(percent)}%`);
+                    }
+                }
+            });
+            
+            xhr.addEventListener('load', () => {
+                console.log('📥 Upload response received');
+                console.log('   Status:', xhr.status);
+                console.log('   Response text:', xhr.responseText);
+                
+                if (xhr.status === 200) {
+                    try {
+                        const data = JSON.parse(xhr.responseText);
+                        console.log('📥 Parsed response:', data);
+                        console.log('   Keys:', Object.keys(data));
+                        console.log('   data.success:', data.success);
+                        console.log('   data.filepath:', data.filepath);
+                        
+                        if (data.success) {
+                            resolve(data);
+                        } else {
+                            reject(new Error(data.error || 'Upload failed'));
+                        }
+                    } catch (e) {
+                        console.error('❌ Failed to parse response:', e);
+                        reject(new Error('Failed to parse upload response: ' + e.message));
+                    }
+                } else {
+                    console.error('❌ Upload failed with status:', xhr.status);
+                    reject(new Error(`Upload failed with status ${xhr.status}`));
+                }
+            });
+            
+            xhr.addEventListener('error', () => {
+                console.error('❌ Upload network error');
+                reject(new Error('Upload failed - network error'));
+            });
+            
+            xhr.addEventListener('abort', () => {
+                console.error('❌ Upload aborted');
+                reject(new Error('Upload aborted'));
+            });
+            
+            console.log('📤 Opening XHR connection to:', `${API_BASE_URL}/video/upload`);
+            xhr.open('POST', `${API_BASE_URL}/video/upload`);
+            xhr.send(formData);
+        });
+        
+        // Upload completed successfully
+        console.log('═══════════════════════════════════════════════════════');
+        console.log('✅ UPLOAD COMPLETED SUCCESSFULLY');
+        console.log('═══════════════════════════════════════════════════════');
+        console.log('📁 Received filepath:', result.filepath);
+        console.log('📝 Filename:', result.filename);
+        console.log('📊 Size:', result.size_mb, 'MB');
+        
+        // CRITICAL: Set global variable
+        console.log('📁 Setting uploadedVideoPath to:', result.filepath);
+        uploadedVideoPath = result.filepath;
+        console.log('📁 uploadedVideoPath is now:', uploadedVideoPath);
+        console.log('📁 Type:', typeof uploadedVideoPath);
+        console.log('📁 Length:', uploadedVideoPath ? uploadedVideoPath.length : 'NULL');
+        console.log('═══════════════════════════════════════════════════════');
+        
+        // Update UI - show success state
+        uploadProgress.style.display = 'none';
+        uploadSuccess.style.display = 'block';
+        
+        console.log('✅ UI updated - Start Processing button should now be visible');
+        
+        return result;
+        
+    } catch (error) {
+        console.error('═══════════════════════════════════════════════════════');
+        console.error('❌ UPLOAD FAILED');
+        console.error('═══════════════════════════════════════════════════════');
+        console.error('Error:', error.message);
+        console.error('Stack:', error.stack);
+        alert(`Upload failed: ${error.message}`);
+        resetUploadModal();
+        throw error;
+    }
+}
+
+/**
+ * Start video processing
+ */
+async function startVideoProcessing() {
+    console.log('═══════════════════════════════════════════════════════');
+    console.log('🎬 START PROCESSING BUTTON CLICKED');
+    console.log('═══════════════════════════════════════════════════════');
+    console.log('📁 CHECKING uploadedVideoPath:');
+    console.log('   Value:', uploadedVideoPath);
+    console.log('   Type:', typeof uploadedVideoPath);
+    console.log('   Is null?', uploadedVideoPath === null);
+    console.log('   Is undefined?', uploadedVideoPath === undefined);
+    console.log('   Is empty string?', uploadedVideoPath === '');
+    console.log('   Truthy?', !!uploadedVideoPath);
+    
+    if (!uploadedVideoPath) {
+        console.error('❌ VALIDATION FAILED: uploadedVideoPath is falsy');
+        console.error('   Actual value:', uploadedVideoPath);
+        alert('No video file uploaded. Please upload a video first.');
+        return;
+    }
+    
+    // Additional validation
+    if (typeof uploadedVideoPath !== 'string') {
+        console.error('❌ VALIDATION FAILED: uploadedVideoPath is not a string');
+        console.error('   Type:', typeof uploadedVideoPath);
+        console.error('   Value:', uploadedVideoPath);
+        alert('Invalid video path type. Please upload the video again.');
+        uploadedVideoPath = null;
+        resetUploadModal();
+        return;
+    }
+    
+    if (uploadedVideoPath.trim() === '') {
+        console.error('❌ VALIDATION FAILED: uploadedVideoPath is empty string');
+        alert('Invalid video path. Please upload the video again.');
+        uploadedVideoPath = null;
+        resetUploadModal();
+        return;
+    }
+    
+    console.log('✅ VALIDATION PASSED');
+    console.log('═══════════════════════════════════════════════════════');
+    
+    try {
+        console.log('🎬 Starting video processing...');
+        console.log('📁 Using filepath:', uploadedVideoPath);
+        
+        // Close modal
+        closeUploadModal();
+        
+        // Reset dashboard
+        resetDashboard();
+        
+        // Stop any existing processing
+        if (cameraRunning || videoProcessing) {
+            console.log('🛑 Stopping existing processing...');
+            await stopCamera();
+            await new Promise(resolve => setTimeout(resolve, 500));
+        }
+        
+        // Prepare request
+        const requestBody = {
+            filepath: uploadedVideoPath
+        };
+        
+        console.log('═══════════════════════════════════════════════════════');
+        console.log('📤 SENDING PROCESSING REQUEST');
+        console.log('═══════════════════════════════════════════════════════');
+        console.log('   URL:', `${API_BASE_URL}/video/process`);
+        console.log('   Method: POST');
+        console.log('   Body:', JSON.stringify(requestBody, null, 2));
+        console.log('   Body.filepath:', requestBody.filepath);
+        console.log('═══════════════════════════════════════════════════════');
+        
+        const response = await fetch(`${API_BASE_URL}/video/process`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestBody)
+        });
+        
+        console.log('═══════════════════════════════════════════════════════');
+        console.log('📥 PROCESSING RESPONSE RECEIVED');
+        console.log('═══════════════════════════════════════════════════════');
+        console.log('   Status:', response.status);
+        console.log('   Status Text:', response.statusText);
+        
+        const data = await response.json();
+        console.log('   Response data:', JSON.stringify(data, null, 2));
+        console.log('═══════════════════════════════════════════════════════');
+        
+        if (data.success) {
+            console.log('✅ Video processing started');
+            console.log('📁 Session ID:', data.session_id);
+            console.log('🎞️  Total frames:', data.total_frames);
+            
+            videoProcessing = true;
+            sourceType = 'video';
+            currentSessionId = data.session_id;
+            
+            // Update UI
+            videoSectionTitle.textContent = 'Video Processing';
+            startCameraBtn.style.display = 'none';
+            uploadVideoBtn.style.display = 'none';
+            stopCameraBtn.style.display = 'inline-flex';
+            stopCameraBtn.innerHTML = '<i class="fas fa-stop"></i> Stop Processing';
+            videoPlaceholder.style.display = 'none';
+            videoFeed.style.display = 'block';
+            videoStats.style.display = 'flex';
+            videoProgress.style.display = 'block';
+            
+            // Start video stream
+            videoFeed.src = `${API_BASE_URL}/video_feed?t=${Date.now()}`;
+            
+            // Start stats polling
+            startStatsPolling();
+            
+            // Show success message
+            showNotification(`Video processing started: ${data.total_frames} frames`, 'success');
+        } else {
+            throw new Error(data.error || 'Failed to start video processing');
+        }
+        
+    } catch (error) {
+        console.error('❌ Video processing error:', error);
+        alert(`Failed to start video processing: ${error.message}`);
+    }
+}
+
+/**
+ * Update start camera to handle both webcam and video
+ */
+async function startCamera() {
+    try {
+        console.log('🎥 Starting new camera session...');
+        startCameraBtn.disabled = true;
+        
+        // Reset dashboard for new session
+        resetDashboard();
+        
+        const response = await fetch(`${API_BASE_URL}/camera/start`, {
+            method: 'POST'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            console.log('✅ Camera started');
+            console.log('📁 Session ID:', data.session_id);
+            console.log('📁 Session Dir:', data.session_dir);
+            
+            cameraRunning = true;
+            sourceType = 'webcam';
+            currentSessionId = data.session_id;
+            
+            // Update UI
+            videoSectionTitle.textContent = 'Live Classroom Feed';
+            startCameraBtn.style.display = 'none';
+            uploadVideoBtn.style.display = 'none';
+            stopCameraBtn.style.display = 'inline-flex';
+            stopCameraBtn.innerHTML = '<i class="fas fa-stop"></i> Stop Camera';
+            videoPlaceholder.style.display = 'none';
+            videoFeed.style.display = 'block';
+            videoStats.style.display = 'flex';
+            videoProgress.style.display = 'none';
+            
+            // Start video stream
+            videoFeed.src = `${API_BASE_URL}/video_feed?t=${Date.now()}`;
+            
+            // Start stats polling
+            startStatsPolling();
+            
+            // Show success message
+            showNotification(`New session started: ${data.session_id}`, 'success');
+        } else {
+            throw new Error(data.error || 'Failed to start camera');
+        }
+        
+    } catch (error) {
+        console.error('❌ Start camera error:', error);
+        alert(`Failed to start camera: ${error.message}`);
+    } finally {
+        startCameraBtn.disabled = false;
+    }
+}
+
+/**
+ * Update stop camera to handle both webcam and video
+ */
+async function stopCamera() {
+    try {
+        console.log('🛑 Stopping...');
+        stopCameraBtn.disabled = true;
+        
+        const endpoint = videoProcessing ? '/video/stop' : '/camera/stop';
+        const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+            method: 'POST'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            console.log('✅ Stopped');
+            cameraRunning = false;
+            videoProcessing = false;
+            sourceType = null;
+            
+            // Update UI
+            videoSectionTitle.textContent = 'Live Classroom Feed';
+            startCameraBtn.style.display = 'inline-flex';
+            uploadVideoBtn.style.display = 'inline-flex';
+            stopCameraBtn.style.display = 'none';
+            videoPlaceholder.style.display = 'flex';
+            videoFeed.style.display = 'none';
+            videoStats.style.display = 'none';
+            videoProgress.style.display = 'none';
+            videoFeed.src = '';
+            
+            // Stop stats polling
+            stopStatsPolling();
+            
+            // Reset stats display
+            document.getElementById('statFps').textContent = '0';
+            document.getElementById('statFaces').textContent = '0';
+            document.getElementById('statStudents').textContent = '0';
+            document.getElementById('statImages').textContent = '0';
+            
+            // Show success message
+            showNotification('Stopped - session data preserved', 'info');
+        }
+        
+    } catch (error) {
+        console.error('❌ Stop error:', error);
+        alert(`Failed to stop: ${error.message}`);
+    } finally {
+        stopCameraBtn.disabled = false;
+    }
 }

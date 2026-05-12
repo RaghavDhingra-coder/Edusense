@@ -5,6 +5,7 @@ Combines camera streaming, detection, tracking, and analytics in one unified das
 
 from flask import Flask, jsonify, request, send_from_directory, Response
 from flask_cors import CORS
+from werkzeug.utils import secure_filename
 import os
 import json
 import logging
@@ -35,16 +36,32 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__, static_folder='frontend', static_url_path='')
 CORS(app)  # Enable CORS
 
+# Configure upload settings
+UPLOAD_FOLDER = 'uploads'
+ALLOWED_EXTENSIONS = {'mp4', 'avi', 'mov', 'mkv', 'flv', 'wmv', 'webm'}
+MAX_UPLOAD_SIZE = 500 * 1024 * 1024  # 500MB
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = MAX_UPLOAD_SIZE
+
+# Create upload directory
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
 # Global state
 analytics_engine = None
 camera_system = None
 camera_lock = threading.Lock()
 current_session_id = None
+video_processing_active = False
 
 
-def generate_session_id():
+def generate_session_id(prefix="session"):
     """Generate unique session ID"""
-    return datetime.now().strftime("session_%Y%m%d_%H%M%S")
+    return datetime.now().strftime(f"{prefix}_%Y%m%d_%H%M%S")
+
+
+def allowed_file(filename):
+    """Check if file extension is allowed"""
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
 def get_session_dir(session_id):
@@ -86,11 +103,13 @@ class CameraSystem:
     Camera processing system - PRESERVES ALL EXISTING LOGIC
     Runs in background thread, streams to web
     NOW WITH SESSION MANAGEMENT
+    Supports both webcam (video_source=0) and video files (video_source=path)
     """
     
-    def __init__(self, video_source=0, session_id=None):
+    def __init__(self, video_source=0, session_id=None, is_video_file=False):
         """Initialize camera system with existing components"""
         self.video_source = video_source
+        self.is_video_file = is_video_file
         self.session_id = session_id or generate_session_id()
         self.session_dir = get_session_dir(self.session_id)
         
@@ -106,6 +125,11 @@ class CameraSystem:
         self.fps = 0
         self.last_fps_time = time.time()
         self.fps_counter = 0
+        
+        # Video file specific
+        self.total_frames = 0
+        self.processing_complete = False
+        self.processing_error = None
         
         # Initialize components - EXACT SAME AS main.py
         logger.info("=" * 60)
@@ -162,39 +186,69 @@ class CameraSystem:
             raise
     
     def start(self):
-        """Start camera processing thread"""
+        """Start camera/video processing thread"""
         with camera_lock:
             if self.running:
-                logger.warning("Camera already running")
+                logger.warning("Processing already running")
                 return False
             
             try:
-                logger.info("[CAMERA] Opening camera...")
-                # Open camera
-                self.cap = cv2.VideoCapture(self.video_source)
-                if not self.cap.isOpened():
-                    logger.error("[CAMERA] ❌ Failed to open camera")
+                # Validate video source
+                if self.video_source is None:
+                    error_msg = "Video source is None"
+                    logger.error(f"[CAMERA] ❌ {error_msg}")
+                    self.processing_error = error_msg
                     return False
                 
-                logger.info("[CAMERA] ✅ Camera opened successfully")
+                if self.is_video_file:
+                    logger.info(f"[VIDEO] Opening video file: {self.video_source}")
+                    logger.info(f"[VIDEO] File exists: {os.path.exists(self.video_source)}")
+                    logger.info(f"[VIDEO] File type: {type(self.video_source)}")
+                else:
+                    logger.info("[CAMERA] Opening camera...")
                 
-                # Set camera properties
-                self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-                self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-                self.cap.set(cv2.CAP_PROP_FPS, 30)
+                # Open video source (camera or file)
+                self.cap = cv2.VideoCapture(self.video_source)
+                if not self.cap.isOpened():
+                    error_msg = f"Failed to open {'video file' if self.is_video_file else 'camera'}: {self.video_source}"
+                    logger.error(f"[CAMERA] ❌ {error_msg}")
+                    self.processing_error = error_msg
+                    return False
                 
-                # Verify camera is working by reading a test frame
+                if self.is_video_file:
+                    # Get video properties
+                    self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                    video_fps = self.cap.get(cv2.CAP_PROP_FPS)
+                    width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                    height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                    logger.info(f"[VIDEO] ✅ Video opened: {width}x{height}, {video_fps:.1f} FPS, {self.total_frames} frames")
+                else:
+                    logger.info("[CAMERA] ✅ Camera opened successfully")
+                    # Set camera properties
+                    self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+                    self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+                    self.cap.set(cv2.CAP_PROP_FPS, 30)
+                
+                # Verify video source is working by reading a test frame
                 ret, test_frame = self.cap.read()
                 if not ret or test_frame is None:
-                    logger.error("[CAMERA] ❌ Failed to read test frame")
+                    error_msg = f"Failed to read test frame from {'video file' if self.is_video_file else 'camera'}"
+                    logger.error(f"[CAMERA] ❌ {error_msg}")
                     self.cap.release()
+                    self.processing_error = error_msg
                     return False
                 
                 logger.info(f"[CAMERA] ✅ Test frame captured: {test_frame.shape}")
                 
+                # Reset video to beginning after test
+                if self.is_video_file:
+                    self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                
                 self.running = True
                 self.frame_number = 0
                 self.active_tracks = set()
+                self.processing_complete = False
+                self.processing_error = None
                 
                 # Start processing thread
                 self.thread = threading.Thread(target=self._process_loop, daemon=True)
@@ -205,13 +259,15 @@ class CameraSystem:
                 return True
                 
             except Exception as e:
-                logger.error(f"[CAMERA] ❌ Failed to start camera: {e}")
+                error_msg = f"Failed to start: {str(e)}"
+                logger.error(f"[CAMERA] ❌ {error_msg}")
                 import traceback
                 traceback.print_exc()
+                self.processing_error = error_msg
                 return False
     
     def stop(self):
-        """Stop camera processing"""
+        """Stop camera/video processing"""
         with camera_lock:
             if not self.running:
                 return False
@@ -225,12 +281,14 @@ class CameraSystem:
                 self.cap.release()
                 self.cap = None
             
-            logger.info("🛑 Camera stopped")
+            source_type = "video" if self.is_video_file else "camera"
+            logger.info(f"🛑 {source_type.capitalize()} stopped")
             return True
     
     def _process_loop(self):
         """
         Main processing loop - PRESERVES ALL EXISTING LOGIC FROM main.py
+        Works for both webcam and video files
         """
         logger.info("[STREAM] 🚀 Processing loop started")
         
@@ -241,9 +299,17 @@ class CameraSystem:
                 ret, frame = self.cap.read()
                 
                 if not ret or frame is None:
-                    logger.warning("[STREAM] ⚠️ Failed to read frame")
-                    time.sleep(0.1)
-                    continue
+                    if self.is_video_file:
+                        # Video file ended
+                        logger.info("[STREAM] ✅ Video processing complete")
+                        self.processing_complete = True
+                        self.running = False
+                        break
+                    else:
+                        # Camera read failed, retry
+                        logger.warning("[STREAM] ⚠️ Failed to read frame")
+                        time.sleep(0.1)
+                        continue
                 
                 frame_count += 1
                 if frame_count % 30 == 0:  # Log every 30 frames
@@ -264,8 +330,10 @@ class CameraSystem:
                 # Update FPS
                 self._update_fps()
                 
-                # Small delay to prevent CPU overload
-                time.sleep(0.01)
+                # Small delay to prevent CPU overload (only for webcam)
+                if not self.is_video_file:
+                    time.sleep(0.01)
+                # For video files, process as fast as possible
                 
         except Exception as e:
             logger.error(f"[STREAM] ❌ Processing loop error: {e}")
@@ -421,6 +489,11 @@ class CameraSystem:
         stats['frame_number'] = self.frame_number
         stats['active_tracks'] = len(self.active_tracks)
         stats['running'] = self.running
+        stats['is_video_file'] = self.is_video_file
+        stats['total_frames'] = self.total_frames
+        stats['processing_complete'] = self.processing_complete
+        stats['processing_error'] = self.processing_error
+        stats['progress_percent'] = (self.frame_number / self.total_frames * 100) if self.total_frames > 0 else 0
         return stats
 
 
@@ -539,18 +612,19 @@ def start_camera():
         logger.info("=" * 60)
         
         # Stop existing camera if running
-        global camera_system, current_session_id
+        global camera_system, current_session_id, video_processing_active
         if camera_system and camera_system.running:
             logger.info("🛑 Stopping previous session...")
             camera_system.stop()
             time.sleep(0.5)  # Brief pause for cleanup
         
         # Create NEW camera system with fresh session
-        new_session_id = generate_session_id()
+        new_session_id = generate_session_id("webcam")
         current_session_id = new_session_id
+        video_processing_active = False
         
         logger.info(f"🆕 Creating new camera system for session: {new_session_id}")
-        camera_system = CameraSystem(video_source=0, session_id=new_session_id)
+        camera_system = CameraSystem(video_source=0, session_id=new_session_id, is_video_file=False)
         
         success = camera_system.start()
         
@@ -564,7 +638,8 @@ def start_camera():
                 'success': True,
                 'message': 'Camera started successfully',
                 'session_id': camera_system.session_id,
-                'session_dir': camera_system.session_dir
+                'session_dir': camera_system.session_dir,
+                'source_type': 'webcam'
             })
         else:
             return jsonify({
@@ -576,6 +651,276 @@ def start_camera():
         logger.error(f"Start camera error: {e}")
         import traceback
         traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/video/upload', methods=['POST'])
+def upload_video():
+    """Upload video file for processing"""
+    try:
+        logger.info("=" * 60)
+        logger.info("📤 Video upload request received")
+        logger.info(f"📋 Request method: {request.method}")
+        logger.info(f"📋 Request files: {list(request.files.keys())}")
+        logger.info("=" * 60)
+        
+        # Check if file is present
+        if 'video' not in request.files:
+            logger.error("❌ No 'video' field in request.files")
+            return jsonify({
+                'success': False,
+                'error': 'No video file provided'
+            }), 400
+        
+        file = request.files['video']
+        logger.info(f"📁 File received: {file.filename}")
+        
+        # Check if filename is empty
+        if file.filename == '':
+            logger.error("❌ Empty filename")
+            return jsonify({
+                'success': False,
+                'error': 'No file selected'
+            }), 400
+        
+        # Check file extension
+        if not allowed_file(file.filename):
+            logger.error(f"❌ Invalid file type: {file.filename}")
+            return jsonify({
+                'success': False,
+                'error': f'Invalid file type. Allowed: {", ".join(ALLOWED_EXTENSIONS)}'
+            }), 400
+        
+        # Secure filename
+        original_filename = file.filename
+        filename = secure_filename(file.filename)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{timestamp}_{filename}"
+        
+        logger.info(f"📝 Original filename: {original_filename}")
+        logger.info(f"📝 Secured filename: {filename}")
+        
+        # Ensure upload directory exists
+        os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+        
+        # Save file
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        logger.info(f"💾 Saving video to: {filepath}")
+        logger.info(f"📁 Upload folder: {app.config['UPLOAD_FOLDER']}")
+        logger.info(f"📁 Absolute path: {os.path.abspath(filepath)}")
+        
+        file.save(filepath)
+        
+        # Verify file was saved
+        if not os.path.exists(filepath):
+            logger.error(f"❌ File not found after save: {filepath}")
+            return jsonify({
+                'success': False,
+                'error': 'Failed to save file'
+            }), 500
+        
+        # Get file size
+        file_size = os.path.getsize(filepath)
+        file_size_mb = file_size / (1024 * 1024)
+        
+        logger.info(f"✅ Video uploaded successfully!")
+        logger.info(f"   Filename: {filename}")
+        logger.info(f"   Size: {file_size_mb:.2f} MB")
+        logger.info(f"   Path: {filepath}")
+        logger.info(f"   Exists: {os.path.exists(filepath)}")
+        logger.info("=" * 60)
+        
+        return jsonify({
+            'success': True,
+            'message': 'Video uploaded successfully',
+            'filename': filename,
+            'filepath': filepath,
+            'size_mb': round(file_size_mb, 2)
+        })
+        
+    except Exception as e:
+        logger.error(f"❌ Video upload error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/video/process', methods=['POST'])
+def process_video():
+    """Start processing uploaded video"""
+    try:
+        logger.info("=" * 60)
+        logger.info("🎬 VIDEO PROCESSING REQUEST RECEIVED")
+        logger.info("=" * 60)
+        
+        # Log raw request data
+        logger.info(f"📋 Request method: {request.method}")
+        logger.info(f"📋 Request content type: {request.content_type}")
+        logger.info(f"📋 Request data (raw): {request.data}")
+        
+        # Parse JSON
+        data = request.get_json()
+        logger.info(f"📋 Parsed JSON: {data}")
+        logger.info(f"📋 JSON keys: {list(data.keys()) if data else 'None'}")
+        
+        if not data:
+            logger.error("❌ No JSON data in request")
+            return jsonify({
+                'success': False,
+                'error': 'No JSON data provided'
+            }), 400
+        
+        if 'filepath' not in data:
+            logger.error(f"❌ No 'filepath' key in JSON. Keys present: {list(data.keys())}")
+            return jsonify({
+                'success': False,
+                'error': 'No filepath provided'
+            }), 400
+        
+        filepath = data['filepath']
+        
+        logger.info(f"📁 Extracted filepath: {filepath}")
+        logger.info(f"📁 Filepath type: {type(filepath)}")
+        logger.info(f"📁 Filepath value: '{filepath}'")
+        
+        # Validate filepath is not None or empty
+        if filepath is None:
+            logger.error("❌ filepath is None")
+            return jsonify({
+                'success': False,
+                'error': 'Invalid filepath: None'
+            }), 400
+        
+        if not filepath:
+            logger.error(f"❌ filepath is empty or falsy: '{filepath}'")
+            return jsonify({
+                'success': False,
+                'error': 'Invalid filepath: empty or None'
+            }), 400
+        
+        if not isinstance(filepath, str):
+            logger.error(f"❌ filepath is not a string: {type(filepath)}")
+            return jsonify({
+                'success': False,
+                'error': f'Invalid filepath type: {type(filepath).__name__}'
+            }), 400
+        
+        if filepath.strip() == '':
+            logger.error("❌ filepath is empty string after strip")
+            return jsonify({
+                'success': False,
+                'error': 'Invalid filepath: empty string'
+            }), 400
+        
+        logger.info("✅ Filepath validation passed")
+        
+        # Validate filepath exists
+        logger.info(f"📁 Checking if file exists: {filepath}")
+        logger.info(f"📁 Absolute path: {os.path.abspath(filepath)}")
+        logger.info(f"📁 Current working directory: {os.getcwd()}")
+        
+        if not os.path.exists(filepath):
+            logger.error(f"❌ Video file not found: {filepath}")
+            logger.error(f"   Absolute path: {os.path.abspath(filepath)}")
+            logger.error(f"   CWD: {os.getcwd()}")
+            return jsonify({
+                'success': False,
+                'error': f'Video file not found: {filepath}'
+            }), 404
+        
+        # Validate it's a file
+        if not os.path.isfile(filepath):
+            logger.error(f"❌ Path is not a file: {filepath}")
+            return jsonify({
+                'success': False,
+                'error': f'Path is not a file: {filepath}'
+            }), 400
+        
+        logger.info("✅ File exists and is valid")
+        logger.info(f"📊 File size: {os.path.getsize(filepath) / (1024*1024):.2f} MB")
+        
+        # Stop existing processing if running
+        global camera_system, current_session_id, video_processing_active
+        if camera_system and camera_system.running:
+            logger.info("🛑 Stopping previous session...")
+            camera_system.stop()
+            time.sleep(0.5)
+        
+        # Create NEW video processing session
+        new_session_id = generate_session_id("video")
+        current_session_id = new_session_id
+        video_processing_active = True
+        
+        logger.info(f"🆕 Creating new video processing session: {new_session_id}")
+        logger.info(f"📹 Video source: {filepath}")
+        
+        # Create camera system with video file
+        camera_system = CameraSystem(video_source=filepath, session_id=new_session_id, is_video_file=True)
+        
+        success = camera_system.start()
+        
+        if success:
+            logger.info("=" * 60)
+            logger.info(f"✅ Video processing started: {camera_system.session_id}")
+            logger.info(f"📁 Session directory: {camera_system.session_dir}")
+            logger.info(f"🎞️  Total frames: {camera_system.total_frames}")
+            logger.info("=" * 60)
+            
+            return jsonify({
+                'success': True,
+                'message': 'Video processing started',
+                'session_id': camera_system.session_id,
+                'session_dir': camera_system.session_dir,
+                'total_frames': camera_system.total_frames,
+                'source_type': 'video',
+                'video_path': filepath
+            })
+        else:
+            error_msg = camera_system.processing_error or 'Failed to start video processing'
+            logger.error(f"❌ Failed to start: {error_msg}")
+            return jsonify({
+                'success': False,
+                'error': error_msg
+            }), 500
+            
+    except Exception as e:
+        logger.error(f"❌ Video processing error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/video/stop', methods=['POST'])
+def stop_video():
+    """Stop video processing"""
+    try:
+        global camera_system, video_processing_active
+        
+        if camera_system is None:
+            return jsonify({
+                'success': True,
+                'message': 'No video processing active'
+            })
+        
+        success = camera_system.stop()
+        video_processing_active = False
+        
+        return jsonify({
+            'success': True,
+            'message': 'Video processing stopped'
+        })
+        
+    except Exception as e:
+        logger.error(f"Stop video error: {e}")
         return jsonify({
             'success': False,
             'error': str(e)
