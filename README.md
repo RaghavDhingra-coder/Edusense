@@ -42,11 +42,113 @@ Complete system for tracking students, analyzing attentiveness, and generating e
 - [Installation Guide](#-installation-guide)
   - [Windows Setup](#windows-setup)
   - [macOS Setup](#macos-setup)
+- [Windows Quick Troubleshooting](#-windows-quick-troubleshooting)
 - [Quick Start](#-quick-start)
 - [Student Registration](#-student-registration)
 - [Web Dashboard Usage](#-web-dashboard-usage)
 - [Configuration](#-configuration)
 - [Troubleshooting](#-troubleshooting)
+
+---
+
+## 🪟 Windows Quick Troubleshooting
+
+**Having issues on Windows? Check these first:**
+
+### ✅ Pre-Installation Checklist
+
+1. **Python 3.9+ installed?**
+   ```cmd
+   python --version
+   ```
+   If not: Download from https://www.python.org/downloads/ and **CHECK "Add Python to PATH"**
+
+2. **Pip working?**
+   ```cmd
+   pip --version
+   ```
+   If not: `python -m ensurepip --upgrade`
+
+3. **Visual C++ Build Tools installed?**
+   - Download: https://visualstudio.microsoft.com/visual-cpp-build-tools/
+   - Select "Desktop development with C++"
+   - Required for InsightFace and other packages
+
+4. **Antivirus disabled temporarily?**
+   - Some antivirus software blocks pip installations
+   - Disable temporarily during installation
+
+### 🚨 Common Windows Errors (Quick Fixes)
+
+| Error | Quick Fix |
+|-------|-----------|
+| `python is not recognized` | Reinstall Python with "Add to PATH" checked |
+| `pip is not recognized` | Run: `python -m ensurepip --upgrade` |
+| `Microsoft Visual C++ 14.0 required` | Install Visual C++ Build Tools (link above) |
+| `Access is denied` | Run Command Prompt as Administrator |
+| `SSL: CERTIFICATE_VERIFY_FAILED` | Run: `pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org -r requirements.txt` |
+| `DLL load failed` | Install Visual C++ Redistributables: https://aka.ms/vs/17/release/vc_redist.x64.exe |
+| Virtual env won't activate | Use Command Prompt (cmd.exe) not PowerShell, or run: `Set-ExecutionPolicy RemoteSigned` in PowerShell as Admin |
+| `git is not recognized` | Install Git from https://git-scm.com/download/win OR download ZIP from GitHub |
+
+### 📝 Step-by-Step Windows Installation (Foolproof)
+
+```cmd
+# 1. Open Command Prompt (NOT PowerShell)
+#    Press Win + R, type: cmd, press Enter
+
+# 2. Verify Python (if this fails, install Python first)
+python --version
+
+# 3. Navigate to project folder
+cd C:\path\to\EduSence-ai
+
+# 4. Create virtual environment
+python -m venv venv
+
+# 5. Activate virtual environment
+venv\Scripts\activate
+
+# 6. Upgrade pip
+python -m pip install --upgrade pip
+
+# 7. Install dependencies (this takes 5-10 minutes)
+pip install -r requirements.txt
+
+# 8. If step 7 fails with C++ error:
+#    - Install Visual C++ Build Tools (see link above)
+#    - Restart Command Prompt
+#    - Retry step 7
+
+# 9. Test installation
+python -c "import torch; import cv2; import insightface; print('Success!')"
+
+# 10. Start server
+python integrated_server.py
+
+# 11. Open browser
+#     Go to: http://localhost:8080
+```
+
+### 💡 Windows-Specific Tips
+
+- **Use Command Prompt (cmd.exe)**, not PowerShell (PowerShell has execution policy issues)
+- **Run as Administrator** if you get "Access Denied" errors
+- **Disable antivirus temporarily** during installation (re-enable after)
+- **Install in short path** (e.g., `C:\EduSence-ai` instead of `C:\Users\YourName\Documents\...`)
+- **Close other Python programs** before installation
+- **Restart computer** after installing Visual C++ Build Tools
+
+### 📖 Need More Help?
+
+**For detailed Windows installation guide with screenshots and troubleshooting:**
+👉 **See [WINDOWS_INSTALLATION_GUIDE.md](WINDOWS_INSTALLATION_GUIDE.md)**
+
+This guide includes:
+- Step-by-step instructions for complete beginners
+- Solutions to all common Windows errors
+- Installation checklist
+- Tips for Windows-specific issues
 
 ---
 
@@ -638,6 +740,260 @@ engagement_score = (focused_frames / total_frames) * 100
 ---
 
 ## 🐛 Troubleshooting
+
+### Common Windows Installation Issues
+
+#### Issue 1: "python is not recognized as an internal or external command"
+
+**Cause**: Python not added to PATH during installation
+
+**Solution**:
+```cmd
+# Option A: Reinstall Python
+1. Uninstall Python from Control Panel
+2. Download Python from https://www.python.org/downloads/
+3. Run installer
+4. ✅ CHECK "Add Python to PATH" (IMPORTANT!)
+5. Click "Install Now"
+
+# Option B: Manually add to PATH
+1. Press Win + R
+2. Type: sysdm.cpl
+3. Click "Environment Variables"
+4. Under "System Variables", find "Path"
+5. Click "Edit" → "New"
+6. Add: C:\Users\YourUsername\AppData\Local\Programs\Python\Python39
+7. Add: C:\Users\YourUsername\AppData\Local\Programs\Python\Python39\Scripts
+8. Click OK on all windows
+9. Restart Command Prompt
+10. Test: python --version
+```
+
+#### Issue 2: "pip is not recognized"
+
+**Cause**: pip not installed or not in PATH
+
+**Solution**:
+```cmd
+# Ensure pip is installed
+python -m ensurepip --upgrade
+
+# Upgrade pip
+python -m pip install --upgrade pip
+
+# Test
+pip --version
+```
+
+#### Issue 3: "error: Microsoft Visual C++ 14.0 or greater is required"
+
+**Cause**: Missing C++ build tools (needed for some Python packages)
+
+**Solution**:
+```cmd
+# Option A: Install Visual Studio Build Tools (Recommended)
+1. Download from: https://visualstudio.microsoft.com/visual-cpp-build-tools/
+2. Run installer
+3. Select "Desktop development with C++"
+4. Click Install (requires ~6GB)
+5. Restart computer
+6. Retry: pip install -r requirements.txt
+
+# Option B: Install Visual Studio Community (Full IDE)
+1. Download from: https://visualstudio.microsoft.com/downloads/
+2. Install with "Desktop development with C++"
+3. Restart computer
+4. Retry installation
+```
+
+#### Issue 4: "Access is denied" during pip install
+
+**Cause**: Insufficient permissions or antivirus blocking
+
+**Solution**:
+```cmd
+# Option A: Run as Administrator
+1. Right-click Command Prompt
+2. Select "Run as administrator"
+3. Navigate to project folder
+4. Retry: pip install -r requirements.txt
+
+# Option B: Install for user only
+pip install --user -r requirements.txt
+
+# Option C: Disable antivirus temporarily
+1. Temporarily disable Windows Defender/antivirus
+2. Run installation
+3. Re-enable antivirus
+```
+
+#### Issue 5: "SSL: CERTIFICATE_VERIFY_FAILED" during pip install
+
+**Cause**: Corporate firewall or SSL certificate issues
+
+**Solution**:
+```cmd
+# Option A: Use trusted host
+pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org -r requirements.txt
+
+# Option B: Upgrade certifi
+pip install --upgrade certifi
+
+# Option C: Use company proxy (if applicable)
+set HTTP_PROXY=http://proxy.company.com:8080
+set HTTPS_PROXY=http://proxy.company.com:8080
+pip install -r requirements.txt
+```
+
+#### Issue 6: "No module named 'cv2'" after installation
+
+**Cause**: OpenCV not installed correctly
+
+**Solution**:
+```cmd
+# Uninstall and reinstall OpenCV
+pip uninstall opencv-python opencv-contrib-python
+pip install opencv-python==4.8.0.74
+
+# Test
+python -c "import cv2; print(cv2.__version__)"
+```
+
+#### Issue 7: "DLL load failed" when importing packages
+
+**Cause**: Missing Visual C++ Redistributables
+
+**Solution**:
+```cmd
+# Install Visual C++ Redistributables
+1. Download from: https://aka.ms/vs/17/release/vc_redist.x64.exe
+2. Run installer
+3. Restart computer
+4. Test: python -c "import cv2; import torch"
+```
+
+#### Issue 8: Virtual environment activation fails
+
+**Cause**: Execution policy restrictions
+
+**Solution**:
+```powershell
+# If using PowerShell (not Command Prompt)
+# Run PowerShell as Administrator
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+
+# Then activate
+.\venv\Scripts\Activate.ps1
+
+# Or use Command Prompt instead
+# Open Command Prompt (cmd.exe)
+venv\Scripts\activate.bat
+```
+
+#### Issue 9: "git is not recognized"
+
+**Cause**: Git not installed or not in PATH
+
+**Solution**:
+```cmd
+# Option A: Install Git
+1. Download from: https://git-scm.com/download/win
+2. Run installer with default settings
+3. Restart Command Prompt
+4. Test: git --version
+
+# Option B: Download ZIP instead
+1. Go to GitHub repository
+2. Click "Code" → "Download ZIP"
+3. Extract to desired location
+4. Open Command Prompt in extracted folder
+```
+
+#### Issue 10: Long path names causing errors
+
+**Cause**: Windows path length limit (260 characters)
+
+**Solution**:
+```cmd
+# Enable long paths in Windows 10/11
+1. Press Win + R
+2. Type: gpedit.msc
+3. Navigate to: Computer Configuration → Administrative Templates → System → Filesystem
+4. Double-click "Enable Win32 long paths"
+5. Select "Enabled"
+6. Click OK
+7. Restart computer
+
+# Or install in shorter path
+# Instead of: C:\Users\YourName\Documents\Projects\EduSence-ai
+# Use: C:\EduSence-ai
+```
+
+### Common macOS Installation Issues
+
+#### Issue 1: "command not found: python3"
+
+**Cause**: Python not installed
+
+**Solution**:
+```bash
+# Install Homebrew first (if not installed)
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# Install Python
+brew install python@3.9
+
+# Test
+python3 --version
+```
+
+#### Issue 2: "xcrun: error: invalid active developer path"
+
+**Cause**: Xcode Command Line Tools not installed
+
+**Solution**:
+```bash
+# Install Xcode Command Line Tools
+xcode-select --install
+
+# Click "Install" in popup window
+# Wait for installation (5-10 minutes)
+
+# Verify
+xcode-select -p
+```
+
+#### Issue 3: "Permission denied" during pip install
+
+**Cause**: System Python protection
+
+**Solution**:
+```bash
+# Use virtual environment (recommended)
+python3 -m venv venv
+source venv/bin/activate
+pip3 install -r requirements.txt
+
+# Or install for user only
+pip3 install --user -r requirements.txt
+```
+
+#### Issue 4: "zsh: command not found: brew"
+
+**Cause**: Homebrew not installed or not in PATH
+
+**Solution**:
+```bash
+# Install Homebrew
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# Add to PATH (for Apple Silicon Macs)
+echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
+eval "$(/opt/homebrew/bin/brew shellenv)"
+
+# Test
+brew --version
+```
 
 ### Installation Issues
 
