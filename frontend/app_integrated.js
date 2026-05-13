@@ -1,12 +1,57 @@
 // API Configuration
-const API_BASE_URL = 'http://localhost:8080/api';
+const API_BASE_URL = window.location.origin;
+
+/**
+ * Get or create browser-specific session ID
+ */
+function getBrowserSessionId() {
+    let sessionId = localStorage.getItem('browser_session_id');
+    if (!sessionId) {
+        sessionId = crypto.randomUUID();
+        localStorage.setItem('browser_session_id', sessionId);
+        console.log('🆔 Generated new browser session ID:', sessionId);
+    }
+    return sessionId;
+}
+
+// Initialize browser session ID
+const BROWSER_SESSION_ID = getBrowserSessionId();
+console.log('🆔 Browser Session ID:', BROWSER_SESSION_ID);
+
+/**
+ * Helper function to safely parse JSON responses
+ * Checks content-type and provides clear error messages
+ */
+async function safeJsonResponse(response) {
+    const contentType = response.headers.get('content-type');
+    
+    if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text();
+        console.error('Non-JSON response:', text.substring(0, 500));
+        throw new Error('Server returned HTML instead of JSON. Check if the server is running correctly.');
+    }
+    
+    return await response.json();
+}
+
+/**
+ * Enhanced fetch with session ID header
+ */
+async function fetchWithSession(url, options = {}) {
+    options.headers = options.headers || {};
+    options.headers['X-Session-ID'] = BROWSER_SESSION_ID;
+    options.headers['X-Browser-Session'] = BROWSER_SESSION_ID;
+    return fetch(url, options);
+}
 
 // DOM Elements
 const startCameraBtn = document.getElementById('startCameraBtn');
 const stopCameraBtn = document.getElementById('stopCameraBtn');
 const uploadVideoBtn = document.getElementById('uploadVideoBtn');
 const analyzeBtn = document.getElementById('analyzeBtn');
-const videoFeed = document.getElementById('videoFeed');
+const videoFeed = document.getElementById('videoFeed'); // Video element for client-side webcam
+const videoFeedImg = document.getElementById('videoFeedImg'); // Img element for server-side stream
+const videoCanvas = document.getElementById('videoCanvas'); // Canvas for drawing detections
 const videoPlaceholder = document.getElementById('videoPlaceholder');
 const videoStats = document.getElementById('videoStats');
 const videoProgress = document.getElementById('videoProgress');
@@ -40,6 +85,15 @@ let isAnalyzing = false;
 let currentSessionId = null;
 let uploadedVideoPath = null;
 let sourceType = null; // 'webcam' or 'video'
+let localStream = null; // MediaStream for client-side webcam
+let frameProcessingInterval = null; // Interval for sending frames to server
+let videoElement = null; // Video element reference
+let canvasElement = null; // Canvas element reference
+let canvasContext = null; // Canvas 2D context
+
+// MODE FIX: detection overlay state
+let lastDetections = []; // most recent detections from server, redrawn every rAF tick
+let overlayAnimationId = null; // requestAnimationFrame handle for continuous overlay
 
 // Debug function - can be called from browser console
 window.debugUploadState = function() {
@@ -123,54 +177,271 @@ function resetDashboard() {
 }
 
 /**
- * Start camera
+ * Start camera - Client-side webcam access
  */
 async function startCamera() {
     try {
-        console.log('🎥 Starting new camera session...');
+        console.log('═══════════════════════════════════════════════════════');
+        console.log('🎥 STARTING CLIENT-SIDE WEBCAM');
+        console.log('═══════════════════════════════════════════════════════');
+        
         startCameraBtn.disabled = true;
         
         // Reset dashboard for new session
         resetDashboard();
         
-        const response = await fetch(`${API_BASE_URL}/camera/start`, {
+        // Request webcam access from browser
+        console.log('📹 Requesting webcam access...');
+        localStream = await navigator.mediaDevices.getUserMedia({ 
+            video: { 
+                width: { ideal: 1280 },
+                height: { ideal: 720 }
+            } 
+        });
+        
+        console.log('✅ Webcam access granted');
+        console.log('Stream tracks:', localStream.getTracks().length);
+        
+        // Create session on server
+        const response = await fetchWithSession('/api/camera/start', {
             method: 'POST'
         });
         
-        const data = await response.json();
+        const data = await safeJsonResponse(response);
         
-        if (data.success) {
-            console.log('✅ Camera started');
-            console.log('📁 Session ID:', data.session_id);
-            console.log('📁 Session Dir:', data.session_dir);
-            
-            cameraRunning = true;
-            currentSessionId = data.session_id;
-            
-            // Update UI
-            startCameraBtn.style.display = 'none';
-            stopCameraBtn.style.display = 'inline-flex';
-            videoPlaceholder.style.display = 'none';
-            videoFeed.style.display = 'block';
-            videoStats.style.display = 'flex';
-            
-            // Start video stream
-            videoFeed.src = `${API_BASE_URL}/video_feed?t=${Date.now()}`;
-            
-            // Start stats polling
-            startStatsPolling();
-            
-            // Show success message
-            showNotification(`New session started: ${data.session_id}`, 'success');
-        } else {
-            throw new Error(data.error || 'Failed to start camera');
+        if (!data.success) {
+            throw new Error(data.message || 'Failed to create session');
         }
         
+        console.log('✅ Server session created:', data.session_id);
+        
+        cameraRunning = true;
+        currentSessionId = data.session_id;
+        sourceType = 'webcam';
+        
+        // Setup video element
+        videoElement = videoFeed;
+        videoElement.srcObject = localStream;
+        
+        console.log('📺 Video srcObject set');
+        
+        // Setup canvas for drawing detections
+        canvasElement = videoCanvas;
+        canvasContext = canvasElement.getContext('2d');
+        
+        // Wait for video to be ready and play it
+        await new Promise((resolve, reject) => {
+            videoElement.onloadedmetadata = async () => {
+                try {
+                    console.log('📺 Video metadata loaded');
+                    console.log(`📺 Video dimensions: ${videoElement.videoWidth}x${videoElement.videoHeight}`);
+                    
+                    // Play the video
+                    await videoElement.play();
+                    console.log('▶️  Video playing');
+                    
+                    // Set canvas size to match video
+                    canvasElement.width = videoElement.videoWidth;
+                    canvasElement.height = videoElement.videoHeight;
+                    console.log(`🎨 Canvas size: ${canvasElement.width}x${canvasElement.height}`);
+                    
+                    resolve();
+                } catch (err) {
+                    reject(err);
+                }
+            };
+            
+            videoElement.onerror = (err) => {
+                reject(new Error('Video element error: ' + err));
+            };
+        });
+        
+        // Update UI
+        startCameraBtn.style.display = 'none';
+        stopCameraBtn.style.display = 'inline-flex';
+        videoPlaceholder.style.display = 'none';
+        videoElement.style.display = 'block';
+        canvasElement.style.display = 'block';
+        videoStats.style.display = 'flex';
+
+        // MODE FIX: hide and reset the video-progress bar — it belongs to video mode only
+        if (videoProgress) {
+            videoProgress.style.display = 'none';
+            document.getElementById('progressFrames').textContent = 'Frame 0 / 0';
+            document.getElementById('progressPercent').textContent = '0%';
+            document.getElementById('videoProgressFill').style.width = '0%';
+        }
+
+        console.log('✅ UI updated');
+
+        // MODE FIX: start continuous rAF overlay loop before frame processing
+        startDetectionOverlay();
+
+        // Start frame processing
+        startFrameProcessing();
+
+        // Start stats polling
+        startStatsPolling();
+        
+        console.log('✅ Local webcam started successfully');
+        showNotification(`Webcam started: ${data.session_id}`, 'success');
+        
     } catch (error) {
-        console.error('❌ Start camera error:', error);
+        console.error('═══════════════════════════════════════════════════════');
+        console.error('❌ START CAMERA ERROR');
+        console.error('═══════════════════════════════════════════════════════');
+        console.error('Error:', error);
+        console.error('═══════════════════════════════════════════════════════');
+        
+        // Cleanup on error
+        if (localStream) {
+            localStream.getTracks().forEach(track => track.stop());
+            localStream = null;
+        }
+        
         alert(`Failed to start camera: ${error.message}`);
     } finally {
         startCameraBtn.disabled = false;
+    }
+}
+
+/**
+ * Start processing frames from client-side webcam.
+ * MODE FIX: uses a hidden offscreen canvas to capture frames so the visible
+ * canvasElement stays as a pure transparent detection overlay.
+ */
+function startFrameProcessing() {
+    if (frameProcessingInterval) {
+        clearInterval(frameProcessingInterval);
+    }
+
+    // Hidden canvas used only to serialise the video frame for the server.
+    // Never inserted into the DOM — keeps the display canvas transparent.
+    const captureCanvas = document.createElement('canvas');
+    const captureCtx = captureCanvas.getContext('2d');
+
+    let frameCount = 0;
+
+    frameProcessingInterval = setInterval(async () => {
+        if (!cameraRunning || !videoElement || !canvasElement) return;
+
+        if (videoElement.videoWidth === 0 || videoElement.videoHeight === 0) return;
+
+        try {
+            frameCount++;
+
+            // Sync capture canvas size to video (only when dimensions change)
+            if (captureCanvas.width !== videoElement.videoWidth) {
+                captureCanvas.width  = videoElement.videoWidth;
+                captureCanvas.height = videoElement.videoHeight;
+            }
+
+            // Draw current frame into the HIDDEN capture canvas
+            captureCtx.drawImage(videoElement, 0, 0, captureCanvas.width, captureCanvas.height);
+
+            const blob = await new Promise(resolve =>
+                captureCanvas.toBlob(resolve, 'image/jpeg', 0.8)
+            );
+
+            if (!blob) return;
+
+            if (frameCount % 10 === 0) {
+                console.log(`📤 Frame ${frameCount} (${(blob.size / 1024).toFixed(1)} KB)`);
+            }
+
+            const formData = new FormData();
+            formData.append('frame', blob, 'frame.jpg');
+            formData.append('session_id', currentSessionId);
+
+            const response = await fetchWithSession('/api/process_frame', {
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await safeJsonResponse(response);
+
+            if (data.success && data.detections) {
+                // MODE FIX: store detections so the rAF overlay loop can redraw them
+                lastDetections = data.detections;
+                // Update face counter immediately from the live detection result
+                document.getElementById('statFaces').textContent = data.detections.length;
+            } else {
+                lastDetections = [];
+                document.getElementById('statFaces').textContent = '0';
+            }
+
+        } catch (error) {
+            console.error('❌ Frame processing error:', error);
+        }
+    }, 400);
+
+    console.log('✅ Frame processing started (400ms interval, offscreen capture canvas)');
+}
+
+/**
+ * Draw detection boxes and labels on the transparent overlay canvas.
+ * MODE FIX: does NOT draw the video frame — the <video> element shows through
+ * underneath.  Removing the video redraw eliminates the stale-frame flicker
+ * and keeps the live feed visible between 400 ms detection updates.
+ */
+function drawDetections(detections) {
+    if (!canvasContext || !canvasElement) return;
+
+    // Clear to fully transparent — live video shows through beneath
+    canvasContext.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+    detections.forEach(detection => {
+        const { bbox, name, confidence, is_registered } = detection;
+        const [x, y, w, h] = bbox;
+
+        const color = is_registered ? '#00ff00' : '#ff9800';
+
+        // Bounding box
+        canvasContext.strokeStyle = color;
+        canvasContext.lineWidth = 3;
+        canvasContext.strokeRect(x, y, w, h);
+
+        // Label
+        const label = is_registered
+            ? `${name} (${(confidence * 100).toFixed(0)}%)`
+            : 'Unknown';
+        canvasContext.font = 'bold 15px Arial';
+        const textWidth = canvasContext.measureText(label).width;
+
+        canvasContext.fillStyle = color;
+        canvasContext.fillRect(x, y - 26, textWidth + 10, 26);
+
+        canvasContext.fillStyle = '#000000';
+        canvasContext.fillText(label, x + 5, y - 7);
+    });
+}
+
+/**
+ * MODE FIX: requestAnimationFrame loop that redraws lastDetections at display
+ * refresh rate.  Detections stay visible continuously between 400 ms server
+ * updates instead of vanishing as soon as the canvas is cleared.
+ */
+function startDetectionOverlay() {
+    stopDetectionOverlay(); // cancel any previous loop
+
+    function renderFrame() {
+        if (!cameraRunning) return; // exit loop when camera stops
+        drawDetections(lastDetections);
+        overlayAnimationId = requestAnimationFrame(renderFrame);
+    }
+
+    overlayAnimationId = requestAnimationFrame(renderFrame);
+    console.log('✅ Detection overlay loop started');
+}
+
+function stopDetectionOverlay() {
+    if (overlayAnimationId !== null) {
+        cancelAnimationFrame(overlayAnimationId);
+        overlayAnimationId = null;
+    }
+    lastDetections = [];
+    if (canvasContext && canvasElement) {
+        canvasContext.clearRect(0, 0, canvasElement.width, canvasElement.height);
     }
 }
 
@@ -182,11 +453,33 @@ async function stopCamera() {
         console.log('🛑 Stopping camera...');
         stopCameraBtn.disabled = true;
         
-        const response = await fetch(`${API_BASE_URL}/camera/stop`, {
-            method: 'POST'
+        // Stop frame processing
+        if (frameProcessingInterval) {
+            clearInterval(frameProcessingInterval);
+            frameProcessingInterval = null;
+        }
+
+        // MODE FIX: stop rAF overlay loop and clear detections
+        stopDetectionOverlay();
+
+        // Stop local webcam stream
+        if (localStream) {
+            localStream.getTracks().forEach(track => track.stop());
+            localStream = null;
+        }
+        
+        // Notify server with session_id
+        const response = await fetchWithSession('/api/camera/stop', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                session_id: currentSessionId
+            })
         });
         
-        const data = await response.json();
+        const data = await safeJsonResponse(response);
         
         if (data.success) {
             console.log('✅ Camera stopped');
@@ -198,8 +491,13 @@ async function stopCamera() {
             stopCameraBtn.style.display = 'none';
             videoPlaceholder.style.display = 'flex';
             videoFeed.style.display = 'none';
+            videoCanvas.style.display = 'none';
             videoStats.style.display = 'none';
-            videoFeed.src = '';
+            
+            // Clear canvas
+            if (canvasContext) {
+                canvasContext.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            }
             
             // Stop stats polling
             stopStatsPolling();
@@ -227,19 +525,26 @@ async function stopCamera() {
  */
 async function checkCameraStatus() {
     try {
-        const response = await fetch(`${API_BASE_URL}/camera/status`);
+        const response = await fetch('/api/camera/status');
         const data = await response.json();
         
         if (data.success && data.status.running) {
-            // Camera is already running
-            cameraRunning = true;
-            startCameraBtn.style.display = 'none';
-            stopCameraBtn.style.display = 'inline-flex';
-            videoPlaceholder.style.display = 'none';
-            videoFeed.style.display = 'block';
-            videoStats.style.display = 'flex';
-            videoFeed.src = `${API_BASE_URL}/video_feed?t=${Date.now()}`;
-            startStatsPolling();
+            // Camera is already running (server-side video processing)
+            // Only restore UI for video file processing, NOT for client-side webcam
+            if (data.status.is_video_file) {
+                cameraRunning = true;
+                videoProcessing = true;
+                sourceType = 'video';
+                startCameraBtn.style.display = 'none';
+                stopCameraBtn.style.display = 'inline-flex';
+                videoPlaceholder.style.display = 'none';
+                videoFeedImg.style.display = 'block';
+                videoStats.style.display = 'flex';
+                // Use relative path for video feed (server-side only)
+                videoFeedImg.src = `/api/video_feed?t=${Date.now()}`;
+                startStatsPolling();
+            }
+            // If it's webcam mode, user needs to start their own webcam
         }
     } catch (error) {
         console.log('Camera status check failed:', error);
@@ -247,45 +552,73 @@ async function checkCameraStatus() {
 }
 
 /**
- * Start polling camera stats
+ * Start polling camera stats.
+ * MODE FIX: uses stats.mode to decide what to display.
+ * - 'video'  → show frame progress bar, hide it only when done
+ * - 'camera' → hide progress bar; face count comes from frame processing directly
+ * - 'idle'   → hide progress bar
  */
 function startStatsPolling() {
     if (statsInterval) {
         clearInterval(statsInterval);
     }
-    
+
     statsInterval = setInterval(async () => {
         try {
-            const response = await fetch(`${API_BASE_URL}/camera/status`);
-            const data = await response.json();
-            
-            if (data.success && data.status) {
-                const stats = data.status;
-                document.getElementById('statFps').textContent = stats.fps.toFixed(1);
-                document.getElementById('statFaces').textContent = stats.active_tracks || 0;
-                document.getElementById('statStudents').textContent = stats.total_students || 0;
-                document.getElementById('statImages').textContent = stats.total_images || 0;
-                
-                // Update video progress for video files
-                if (stats.is_video_file && videoProgress) {
+            const response = await fetch('/api/camera/status');
+            const data = await safeJsonResponse(response);
+
+            if (!data.success || !data.status) return;
+            const stats = data.status;
+
+            if (stats.mode === 'video') {
+                // ── Video processing mode ─────────────────────────────────
+                document.getElementById('statFps').textContent =
+                    (stats.fps || 0).toFixed(1);
+                document.getElementById('statFaces').textContent =
+                    stats.active_tracks || 0;
+                document.getElementById('statStudents').textContent =
+                    stats.total_students || 0;
+                document.getElementById('statImages').textContent =
+                    stats.total_images || 0;
+
+                // Show and update the frame progress bar
+                if (videoProgress) {
                     videoProgress.style.display = 'block';
-                    document.getElementById('progressFrames').textContent = 
-                        `Frame ${stats.frame_number} / ${stats.total_frames}`;
-                    document.getElementById('progressPercent').textContent = 
-                        `${Math.round(stats.progress_percent)}%`;
-                    document.getElementById('videoProgressFill').style.width = 
-                        `${stats.progress_percent}%`;
-                    
-                    // Check if processing is complete
-                    if (stats.processing_complete) {
-                        showNotification('Video processing complete!', 'success');
-                        stopStatsPolling();
-                        videoProcessing = false;
-                        stopCameraBtn.style.display = 'none';
-                        analyzeBtn.disabled = false;
-                    }
+                    document.getElementById('progressFrames').textContent =
+                        `Frame ${stats.current_frame} / ${stats.total_frames}`;
+                    document.getElementById('progressPercent').textContent =
+                        `${Math.round(stats.progress)}%`;
+                    document.getElementById('videoProgressFill').style.width =
+                        `${stats.progress}%`;
                 }
+
+                if (stats.processing_complete) {
+                    showNotification('Video processing complete!', 'success');
+                    stopStatsPolling();
+                    videoProcessing = false;
+                    stopCameraBtn.style.display = 'none';
+                    analyzeBtn.disabled = false;
+                }
+
+            } else if (stats.mode === 'camera') {
+                // ── Live webcam mode ──────────────────────────────────────
+                // Hide the progress bar — it belongs to video mode only.
+                if (videoProgress) videoProgress.style.display = 'none';
+
+                // WEBCAM RECOGNITION FIX: server now returns aggregated
+                // students / images_saved counts from SessionProcessor.get_stats().
+                // Face count is still updated directly from frame responses (faster).
+                document.getElementById('statStudents').textContent =
+                    stats.students || 0;
+                document.getElementById('statImages').textContent =
+                    stats.images_saved || 0;
+
+            } else {
+                // ── Idle mode ─────────────────────────────────────────────
+                if (videoProgress) videoProgress.style.display = 'none';
             }
+
         } catch (error) {
             console.error('Stats polling error:', error);
         }
@@ -322,7 +655,7 @@ async function analyzeClassroom() {
     try {
         console.log('🔍 Starting analysis...');
         
-        const response = await fetch(`${API_BASE_URL}/analyze`, {
+        const response = await fetch('/api/analyze', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -332,12 +665,12 @@ async function analyzeClassroom() {
         console.log('Response status:', response.status);
         
         if (!response.ok) {
-            const errorData = await response.json();
+            const errorData = await safeJsonResponse(response);
             console.error('API Error:', errorData);
-            throw new Error(errorData.error || 'Analysis failed');
+            throw new Error(errorData.message || errorData.error || 'Analysis failed');
         }
         
-        const data = await response.json();
+        const data = await safeJsonResponse(response);
         console.log('Analysis result:', data);
         
         if (data.success) {
@@ -499,10 +832,10 @@ function createStudentCard(student) {
     if (student.sample_image) {
         // Check if it's already a session path
         if (student.sample_image.startsWith('sessions/')) {
-            imageUrl = `${API_BASE_URL}/images/${student.sample_image}`;
+            imageUrl = `/api/images/${student.sample_image}`;
         } else {
             // Legacy path - remove 'students/' prefix
-            imageUrl = `${API_BASE_URL}/images/${student.sample_image.replace('students/', '')}`;
+            imageUrl = `/api/images/${student.sample_image.replace('students/', '')}`;
         }
     }
     
@@ -777,8 +1110,8 @@ async function handleFile(file) {
                 reject(new Error('Upload aborted'));
             });
             
-            console.log('📤 Opening XHR connection to:', `${API_BASE_URL}/video/upload`);
-            xhr.open('POST', `${API_BASE_URL}/video/upload`);
+            console.log('📤 Opening XHR connection to:', '/api/video/upload');
+            xhr.open('POST', '/api/video/upload');
             xhr.send(formData);
         });
         
@@ -887,13 +1220,13 @@ async function startVideoProcessing() {
         console.log('═══════════════════════════════════════════════════════');
         console.log('📤 SENDING PROCESSING REQUEST');
         console.log('═══════════════════════════════════════════════════════');
-        console.log('   URL:', `${API_BASE_URL}/video/process`);
+        console.log('   URL:', '/api/video/process');
         console.log('   Method: POST');
         console.log('   Body:', JSON.stringify(requestBody, null, 2));
         console.log('   Body.filepath:', requestBody.filepath);
         console.log('═══════════════════════════════════════════════════════');
         
-        const response = await fetch(`${API_BASE_URL}/video/process`, {
+        const response = await fetch('/api/video/process', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -907,7 +1240,7 @@ async function startVideoProcessing() {
         console.log('   Status:', response.status);
         console.log('   Status Text:', response.statusText);
         
-        const data = await response.json();
+        const data = await safeJsonResponse(response);
         console.log('   Response data:', JSON.stringify(data, null, 2));
         console.log('═══════════════════════════════════════════════════════');
         
@@ -927,12 +1260,12 @@ async function startVideoProcessing() {
             stopCameraBtn.style.display = 'inline-flex';
             stopCameraBtn.innerHTML = '<i class="fas fa-stop"></i> Stop Processing';
             videoPlaceholder.style.display = 'none';
-            videoFeed.style.display = 'block';
+            videoFeedImg.style.display = 'block';  // Use img element for server stream
             videoStats.style.display = 'flex';
             videoProgress.style.display = 'block';
             
-            // Start video stream
-            videoFeed.src = `${API_BASE_URL}/video_feed?t=${Date.now()}`;
+            // Start video stream (server-side for uploaded video)
+            videoFeedImg.src = `/api/video_feed?t=${Date.now()}`;
             
             // Start stats polling
             startStatsPolling();
@@ -946,115 +1279,5 @@ async function startVideoProcessing() {
     } catch (error) {
         console.error('❌ Video processing error:', error);
         alert(`Failed to start video processing: ${error.message}`);
-    }
-}
-
-/**
- * Update start camera to handle both webcam and video
- */
-async function startCamera() {
-    try {
-        console.log('🎥 Starting new camera session...');
-        startCameraBtn.disabled = true;
-        
-        // Reset dashboard for new session
-        resetDashboard();
-        
-        const response = await fetch(`${API_BASE_URL}/camera/start`, {
-            method: 'POST'
-        });
-        
-        const data = await response.json();
-        
-        if (data.success) {
-            console.log('✅ Camera started');
-            console.log('📁 Session ID:', data.session_id);
-            console.log('📁 Session Dir:', data.session_dir);
-            
-            cameraRunning = true;
-            sourceType = 'webcam';
-            currentSessionId = data.session_id;
-            
-            // Update UI
-            videoSectionTitle.textContent = 'Live Classroom Feed';
-            startCameraBtn.style.display = 'none';
-            uploadVideoBtn.style.display = 'none';
-            stopCameraBtn.style.display = 'inline-flex';
-            stopCameraBtn.innerHTML = '<i class="fas fa-stop"></i> Stop Camera';
-            videoPlaceholder.style.display = 'none';
-            videoFeed.style.display = 'block';
-            videoStats.style.display = 'flex';
-            videoProgress.style.display = 'none';
-            
-            // Start video stream
-            videoFeed.src = `${API_BASE_URL}/video_feed?t=${Date.now()}`;
-            
-            // Start stats polling
-            startStatsPolling();
-            
-            // Show success message
-            showNotification(`New session started: ${data.session_id}`, 'success');
-        } else {
-            throw new Error(data.error || 'Failed to start camera');
-        }
-        
-    } catch (error) {
-        console.error('❌ Start camera error:', error);
-        alert(`Failed to start camera: ${error.message}`);
-    } finally {
-        startCameraBtn.disabled = false;
-    }
-}
-
-/**
- * Update stop camera to handle both webcam and video
- */
-async function stopCamera() {
-    try {
-        console.log('🛑 Stopping...');
-        stopCameraBtn.disabled = true;
-        
-        const endpoint = videoProcessing ? '/video/stop' : '/camera/stop';
-        const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-            method: 'POST'
-        });
-        
-        const data = await response.json();
-        
-        if (data.success) {
-            console.log('✅ Stopped');
-            cameraRunning = false;
-            videoProcessing = false;
-            sourceType = null;
-            
-            // Update UI
-            videoSectionTitle.textContent = 'Live Classroom Feed';
-            startCameraBtn.style.display = 'inline-flex';
-            uploadVideoBtn.style.display = 'inline-flex';
-            stopCameraBtn.style.display = 'none';
-            videoPlaceholder.style.display = 'flex';
-            videoFeed.style.display = 'none';
-            videoStats.style.display = 'none';
-            videoProgress.style.display = 'none';
-            videoFeed.src = '';
-            
-            // Stop stats polling
-            stopStatsPolling();
-            
-            // Reset stats display
-            document.getElementById('statFps').textContent = '0';
-            document.getElementById('statFaces').textContent = '0';
-            document.getElementById('statStudents').textContent = '0';
-            document.getElementById('statImages').textContent = '0';
-            
-            // Show success message
-            showNotification('Stopped - session data preserved', 'info');
-        }
-        
-    } catch (error) {
-        console.error('❌ Stop error:', error);
-        alert(`Failed to stop: ${error.message}`);
-    } finally {
-        stopCameraBtn.disabled = false;
     }
 }

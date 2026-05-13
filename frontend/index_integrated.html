@@ -90,7 +90,9 @@
                     <span id="videoSectionTitle">Live Classroom Feed</span>
                 </h2>
                 <div class="video-container">
-                    <img id="videoFeed" src="" alt="Camera Feed" class="video-feed">
+                    <video id="videoFeed" autoplay playsinline class="video-feed" style="display: none;"></video>
+                    <canvas id="videoCanvas" class="video-feed" style="display: none;"></canvas>
+                    <img id="videoFeedImg" src="" alt="Camera Feed" class="video-feed" style="display: none;">
                     <div id="videoPlaceholder" class="video-placeholder">
                         <i class="fas fa-video-slash"></i>
                         <p>Camera Not Started</p>

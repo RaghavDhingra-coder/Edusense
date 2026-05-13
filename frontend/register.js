@@ -1,5 +1,5 @@
 // API Configuration
-const API_BASE_URL = 'http://localhost:8080/api';
+const API_BASE_URL = window.location.origin;
 
 // State
 let capturedImages = [];
@@ -70,7 +70,7 @@ async function captureFromCamera() {
         
         showStatus('Capturing face images from camera...', 'info');
         
-        const response = await fetch(`${API_BASE_URL}/students/capture`, {
+        const response = await fetch('/api/students/capture', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -184,7 +184,7 @@ async function registerStudent(e) {
         
         showStatus('Registering student...', 'info');
         
-        const response = await fetch(`${API_BASE_URL}/students/register`, {
+        const response = await fetch('/api/students/register', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -226,7 +226,7 @@ async function registerStudent(e) {
  */
 async function loadStudents() {
     try {
-        const response = await fetch(`${API_BASE_URL}/students/list`);
+        const response = await fetch('/api/students/list');
         const data = await response.json();
         
         if (data.success) {
@@ -272,7 +272,7 @@ async function deleteStudent(studentId, studentName) {
     }
     
     try {
-        const response = await fetch(`${API_BASE_URL}/students/delete/${studentId}`, {
+        const response = await fetch(`/api/students/delete/${studentId}`, {
             method: 'DELETE'
         });
         

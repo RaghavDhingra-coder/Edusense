@@ -1,5 +1,5 @@
 // API Configuration
-const API_BASE_URL = 'http://localhost:8080/api';
+const API_BASE_URL = window.location.origin;
 
 // DOM Elements
 const analyzeBtn = document.getElementById('analyzeBtn');
@@ -27,7 +27,7 @@ document.addEventListener('DOMContentLoaded', () => {
  */
 async function checkForCachedData() {
     try {
-        const response = await fetch(`${API_BASE_URL}/summary`);
+        const response = await fetch('/api/summary');
         
         if (response.ok) {
             const data = await response.json();
@@ -46,7 +46,7 @@ async function checkForCachedData() {
  */
 async function loadCachedAnalysis() {
     try {
-        const response = await fetch(`${API_BASE_URL}/analyze`, {
+        const response = await fetch('/api/analyze', {
             method: 'POST'
         });
         
@@ -80,9 +80,9 @@ async function analyzeClassroom() {
     
     try {
         console.log('🔍 Starting analysis...');
-        console.log('API URL:', `${API_BASE_URL}/analyze`);
+        console.log('API URL:', '/api/analyze');
         
-        const response = await fetch(`${API_BASE_URL}/analyze`, {
+        const response = await fetch('/api/analyze', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
