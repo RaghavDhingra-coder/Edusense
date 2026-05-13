@@ -3,47 +3,129 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EduSense AI - Integrated Dashboard</title>
+    <title>EduSense AI — Classroom Dashboard</title>
     <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            corePlugins: { preflight: false },
+            theme: { extend: { fontFamily: { sans: ['Inter', 'ui-sans-serif'] } } }
+        }
+    </script>
+    <style>
+        *, *::before, *::after { font-family: 'Inter', sans-serif; }
+
+        /* Override body from styles.css to use slate bg */
+        body { background: #f1f5f9 !important; }
+
+        /* New header — replaces the old .header styles */
+        .app-header {
+            background: #fff;
+            border-bottom: 1px solid #e2e8f0;
+            position: sticky; top: 0; z-index: 100;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+        }
+        .app-header .inner {
+            max-width: 1400px; margin: 0 auto;
+            padding: 0 24px;
+            display: flex; justify-content: space-between; align-items: center;
+            height: 64px; gap: 12px;
+        }
+        .app-header .logo-wrap { display: flex; align-items: center; gap: 12px; text-decoration: none; }
+        .app-header .logo-icon {
+            width: 38px; height: 38px; background: #4f46e5;
+            border-radius: 10px; display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 4px 12px rgba(79,70,229,0.35);
+        }
+        .app-header .logo-icon i { color: #fff; font-size: 17px; }
+        .app-header .logo-name { font-size: 20px; font-weight: 800; color: #0f172a; letter-spacing: -0.3px; }
+        .app-header .logo-name span { color: #4f46e5; }
+        .app-header .actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+        /* Header buttons */
+        .hbtn {
+            display: inline-flex; align-items: center; gap: 7px;
+            padding: 9px 16px; border-radius: 10px; font-size: 13.5px; font-weight: 600;
+            border: none; cursor: pointer; transition: all 0.2s ease; text-decoration: none;
+            white-space: nowrap;
+        }
+        .hbtn-ghost { background: transparent; color: #475569; border: 1px solid #e2e8f0; }
+        .hbtn-ghost:hover { background: #f8fafc; color: #4f46e5; border-color: #c7d2fe; }
+        .hbtn-success { background: #059669; color: #fff; box-shadow: 0 2px 8px rgba(5,150,105,0.3); }
+        .hbtn-success:hover { background: #047857; transform: translateY(-1px); }
+        .hbtn-danger { background: #dc2626; color: #fff; box-shadow: 0 2px 8px rgba(220,38,38,0.3); }
+        .hbtn-danger:hover { background: #b91c1c; transform: translateY(-1px); }
+        .hbtn-info { background: #0284c7; color: #fff; box-shadow: 0 2px 8px rgba(2,132,199,0.3); }
+        .hbtn-info:hover { background: #0369a1; transform: translateY(-1px); }
+        .hbtn-primary { background: #4f46e5; color: #fff; box-shadow: 0 2px 8px rgba(79,70,229,0.35); }
+        .hbtn-primary:hover { background: #4338ca; transform: translateY(-1px); }
+
+        /* Page content wrapper */
+        .page-content { max-width: 1400px; margin: 0 auto; padding: 28px 24px; }
+
+        /* Section title override — make it dark on light bg */
+        .section-title { color: #0f172a !important; }
+
+        /* Status banner */
+        .status-banner {
+            display: flex; align-items: center; gap: 10px;
+            background: #f0fdf4; border: 1px solid #bbf7d0;
+            border-radius: 10px; padding: 10px 14px;
+            font-size: 13px; color: #166534; margin-bottom: 20px;
+        }
+        .status-banner i { color: #16a34a; }
+    </style>
 </head>
 <body>
-    <!-- Header -->
-    <header class="header">
-        <div class="container">
-            <div class="header-content">
-                <div class="logo">
-                    <i class="fas fa-graduation-cap"></i>
-                    <h1>EduSense AI</h1>
-                </div>
-                <div class="header-actions">
-                    <button id="startCameraBtn" class="btn btn-success">
-                        <i class="fas fa-video"></i>
-                        Start Camera
-                    </button>
-                    <button id="stopCameraBtn" class="btn btn-danger" style="display: none;">
-                        <i class="fas fa-stop"></i>
-                        Stop Camera
-                    </button>
-                    <button id="uploadVideoBtn" class="btn btn-info">
-                        <i class="fas fa-upload"></i>
-                        Upload Video
-                    </button>
-                    <button id="analyzeBtn" class="btn btn-primary">
-                        <i class="fas fa-chart-line"></i>
-                        Analyze Classroom
-                    </button>
-                </div>
+
+    <!-- ── App Header ── -->
+    <header class="app-header">
+        <div class="inner">
+            <!-- Logo -->
+            <a href="landing.html" class="logo-wrap">
+                <div class="logo-icon"><i class="fas fa-graduation-cap"></i></div>
+                <span class="logo-name">EduSense <span>AI</span></span>
+            </a>
+
+            <!-- Actions -->
+            <div class="actions">
+                <a href="register.html" class="hbtn hbtn-ghost">
+                    <i class="fas fa-user-plus"></i>
+                    <span class="hidden sm:inline">Register Students</span>
+                </a>
+
+                <button id="startCameraBtn" class="hbtn hbtn-success">
+                    <i class="fas fa-video"></i>
+                    <span class="hidden sm:inline">Start Camera</span>
+                </button>
+
+                <button id="stopCameraBtn" class="hbtn hbtn-danger" style="display:none;">
+                    <i class="fas fa-stop"></i>
+                    <span class="hidden sm:inline">Stop Camera</span>
+                </button>
+
+                <button id="uploadVideoBtn" class="hbtn hbtn-info">
+                    <i class="fas fa-upload"></i>
+                    <span class="hidden sm:inline">Upload Video</span>
+                </button>
+
+                <button id="analyzeBtn" class="hbtn hbtn-primary">
+                    <i class="fas fa-chart-line"></i>
+                    <span class="hidden sm:inline">Analyze Classroom</span>
+                </button>
             </div>
         </div>
     </header>
 
-    <!-- Main Content -->
-    <main class="main-content">
-        <div class="container">
-            
+    <!-- ── Main ── -->
+    <main>
+        <div class="page-content">
+
             <!-- Video Upload Modal -->
-            <div id="uploadModal" class="modal" style="display: none;">
+            <div id="uploadModal" class="modal" style="display:none;">
                 <div class="modal-content">
                     <div class="modal-header">
                         <h2><i class="fas fa-upload"></i> Upload Classroom Video</h2>
@@ -52,15 +134,14 @@
                     <div class="modal-body">
                         <div class="upload-area" id="uploadArea">
                             <i class="fas fa-cloud-upload-alt"></i>
-                            <p>Drag & drop video file here or click to browse</p>
-                            <p class="upload-hint">Supported formats: MP4, AVI, MOV, MKV, FLV, WMV, WEBM (Max 500MB)</p>
-                            <input type="file" id="videoFileInput" accept="video/*" style="display: none;">
+                            <p>Drag &amp; drop a video file here, or click to browse</p>
+                            <p class="upload-hint">Supported: MP4, AVI, MOV, MKV, FLV, WMV, WEBM (Max 500 MB)</p>
+                            <input type="file" id="videoFileInput" accept="video/*" style="display:none;">
                             <button id="browseBtn" class="btn btn-secondary">
-                                <i class="fas fa-folder-open"></i>
-                                Browse Files
+                                <i class="fas fa-folder-open"></i> Browse Files
                             </button>
                         </div>
-                        <div id="uploadProgress" class="upload-progress" style="display: none;">
+                        <div id="uploadProgress" class="upload-progress" style="display:none;">
                             <div class="upload-info">
                                 <i class="fas fa-file-video"></i>
                                 <span id="uploadFileName">video.mp4</span>
@@ -69,36 +150,35 @@
                             <div class="progress-bar">
                                 <div class="progress-fill" id="uploadProgressFill"></div>
                             </div>
-                            <p class="progress-text" id="uploadProgressText">Uploading... 0%</p>
+                            <p class="progress-text" id="uploadProgressText">Uploading… 0%</p>
                         </div>
-                        <div id="uploadSuccess" class="upload-success" style="display: none;">
+                        <div id="uploadSuccess" class="upload-success" style="display:none;">
                             <i class="fas fa-check-circle"></i>
                             <p>Video uploaded successfully!</p>
                             <button id="startProcessingBtn" class="btn btn-primary">
-                                <i class="fas fa-play"></i>
-                                Start Processing
+                                <i class="fas fa-play"></i> Start Processing
                             </button>
                         </div>
                     </div>
                 </div>
             </div>
-            
-            <!-- Live Video Feed Section -->
+
+            <!-- Live Video Section -->
             <div id="videoSection" class="video-section">
                 <h2 class="section-title">
                     <i class="fas fa-video"></i>
                     <span id="videoSectionTitle">Live Classroom Feed</span>
                 </h2>
                 <div class="video-container">
-                    <video id="videoFeed" autoplay playsinline class="video-feed" style="display: none;"></video>
-                    <canvas id="videoCanvas" class="video-feed" style="display: none;"></canvas>
-                    <img id="videoFeedImg" src="" alt="Camera Feed" class="video-feed" style="display: none;">
+                    <video id="videoFeed" autoplay playsinline class="video-feed" style="display:none;"></video>
+                    <canvas id="videoCanvas" class="video-feed" style="display:none;"></canvas>
+                    <img id="videoFeedImg" src="" alt="Camera Feed" class="video-feed" style="display:none;">
                     <div id="videoPlaceholder" class="video-placeholder">
                         <i class="fas fa-video-slash"></i>
                         <p>Camera Not Started</p>
-                        <p class="video-hint">Click "Start Camera" or "Upload Video" to begin</p>
+                        <p class="video-hint">Click "Start Camera" or "Upload Video" to begin monitoring</p>
                     </div>
-                    <div id="videoStats" class="video-stats" style="display: none;">
+                    <div id="videoStats" class="video-stats" style="display:none;">
                         <div class="stat-item">
                             <span class="stat-label">FPS:</span>
                             <span class="stat-value" id="statFps">0</span>
@@ -116,7 +196,7 @@
                             <span class="stat-value" id="statImages">0</span>
                         </div>
                     </div>
-                    <div id="videoProgress" class="video-progress" style="display: none;">
+                    <div id="videoProgress" class="video-progress" style="display:none;">
                         <div class="progress-info">
                             <span id="progressFrames">Frame 0 / 0</span>
                             <span id="progressPercent">0%</span>
@@ -127,11 +207,11 @@
                     </div>
                 </div>
             </div>
-            
+
             <!-- Loading State -->
-            <div id="loadingState" class="loading-state" style="display: none;">
+            <div id="loadingState" class="loading-state" style="display:none;">
                 <div class="loading-spinner"></div>
-                <h2>Analyzing Classroom Engagement...</h2>
+                <h2>Analyzing Classroom Engagement…</h2>
                 <p>Processing student images and computing analytics</p>
                 <div class="progress-bar">
                     <div class="progress-fill" id="progressFill"></div>
@@ -140,15 +220,15 @@
             </div>
 
             <!-- Empty State -->
-            <div id="emptyState" class="empty-state" style="display: none;">
+            <div id="emptyState" class="empty-state" style="display:none;">
                 <i class="fas fa-chart-bar"></i>
                 <h2>No Analysis Yet</h2>
                 <p>Start the camera to collect student data, then click "Analyze Classroom"</p>
             </div>
 
             <!-- Dashboard Content -->
-            <div id="dashboardContent" style="display: none;">
-                
+            <div id="dashboardContent" style="display:none;">
+
                 <!-- Summary Cards -->
                 <div class="summary-section">
                     <h2 class="section-title">
@@ -157,39 +237,28 @@
                     </h2>
                     <div class="summary-cards">
                         <div class="summary-card">
-                            <div class="card-icon blue">
-                                <i class="fas fa-users"></i>
-                            </div>
+                            <div class="card-icon blue"><i class="fas fa-users"></i></div>
                             <div class="card-content">
                                 <h3 id="totalStudents">0</h3>
                                 <p>Total Students</p>
                             </div>
                         </div>
-
                         <div class="summary-card">
-                            <div class="card-icon green">
-                                <i class="fas fa-check-circle"></i>
-                            </div>
+                            <div class="card-icon green"><i class="fas fa-check-circle"></i></div>
                             <div class="card-content">
                                 <h3 id="focusedStudents">0</h3>
                                 <p>Focused Students</p>
                             </div>
                         </div>
-
                         <div class="summary-card">
-                            <div class="card-icon red">
-                                <i class="fas fa-exclamation-circle"></i>
-                            </div>
+                            <div class="card-icon red"><i class="fas fa-exclamation-circle"></i></div>
                             <div class="card-content">
                                 <h3 id="distractedStudents">0</h3>
                                 <p>Unfocused Students</p>
                             </div>
                         </div>
-
                         <div class="summary-card">
-                            <div class="card-icon purple">
-                                <i class="fas fa-percentage"></i>
-                            </div>
+                            <div class="card-icon purple"><i class="fas fa-percentage"></i></div>
                             <div class="card-content">
                                 <h3 id="avgEngagement">0%</h3>
                                 <p>Average Engagement</p>
@@ -208,21 +277,21 @@
                         <div class="chart-bar">
                             <div class="bar-label">Focused</div>
                             <div class="bar-container">
-                                <div class="bar bar-success" id="focusedBar" style="width: 0%"></div>
+                                <div class="bar bar-success" id="focusedBar" style="width:0%"></div>
                                 <span class="bar-value" id="focusedPercent">0%</span>
                             </div>
                         </div>
                         <div class="chart-bar">
                             <div class="bar-label">Moderately Focused</div>
                             <div class="bar-container">
-                                <div class="bar bar-warning" id="neutralBar" style="width: 0%"></div>
+                                <div class="bar bar-warning" id="neutralBar" style="width:0%"></div>
                                 <span class="bar-value" id="neutralPercent">0%</span>
                             </div>
                         </div>
                         <div class="chart-bar">
                             <div class="bar-label">Unfocused</div>
                             <div class="bar-container">
-                                <div class="bar bar-danger" id="distractedBar" style="width: 0%"></div>
+                                <div class="bar bar-danger" id="distractedBar" style="width:0%"></div>
                                 <span class="bar-value" id="distractedPercent">0%</span>
                             </div>
                         </div>
@@ -235,9 +304,7 @@
                         <i class="fas fa-user-graduate"></i>
                         Individual Student Analytics
                     </h2>
-                    <div id="studentGrid" class="student-grid">
-                        <!-- Student cards will be inserted here -->
-                    </div>
+                    <div id="studentGrid" class="student-grid"></div>
                 </div>
 
             </div>
@@ -245,10 +312,20 @@
         </div>
     </main>
 
-    <!-- Footer -->
-    <footer class="footer">
-        <div class="container">
-            <p>&copy; 2024 EduSense AI - Integrated Classroom Monitoring</p>
+    <!-- ── Footer ── -->
+    <footer style="background:#fff; border-top:1px solid #e2e8f0; padding:20px 24px; margin-top:40px;">
+        <div style="max-width:1400px; margin:0 auto; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+            <div style="display:flex; align-items:center; gap:10px;">
+                <div style="width:30px;height:30px;background:#4f46e5;border-radius:8px;display:flex;align-items:center;justify-content:center;">
+                    <i class="fas fa-graduation-cap" style="color:#fff;font-size:13px;"></i>
+                </div>
+                <span style="font-weight:700;color:#0f172a;font-size:15px;">EduSense <span style="color:#4f46e5;">AI</span></span>
+            </div>
+            <div style="display:flex;gap:20px;">
+                <a href="landing.html" style="color:#94a3b8;font-size:13px;text-decoration:none;">Home</a>
+                <a href="register.html" style="color:#94a3b8;font-size:13px;text-decoration:none;">Register Students</a>
+            </div>
+            <p style="color:#cbd5e1;font-size:12px;">© 2024 EduSense AI — Integrated Classroom Monitoring</p>
         </div>
     </footer>
 

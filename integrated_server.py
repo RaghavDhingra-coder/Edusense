@@ -817,7 +817,7 @@ def generate_frames(browser_session_id):
 
 @app.route('/')
 def index():
-    return send_from_directory('frontend', 'index_integrated.html')
+    return send_from_directory('frontend', 'landing.html')
 
 
 @app.route('/<path:path>')
