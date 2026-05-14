@@ -38,11 +38,19 @@ The live deployment showcases the full EduSence AI experience including the web 
 
 ---
 
-## 🎥 Demo Video
+## 🎥 Demo Preview
+
+<p align="center">
+  <img
+    src="readme_demo-ezgif.com-video-to-gif-converter.gif"
+    alt="EduSense AI Demo Preview"
+    width="100%"
+  />
+</p>
 
 <p align="center">
   <a href="https://youtu.be/AYZ8jsoFF1E">
-    <img src="https://img.youtube.com/vi/AYZ8jsoFF1E/maxresdefault.jpg" alt="EduSense AI Demo Video" width="800">
+    ▶️ Watch the full demo on YouTube
   </a>
 </p>
 
@@ -51,7 +59,7 @@ The live deployment showcases the full EduSence AI experience including the web 
 ## 📋 Table of Contents
 
 - [🌐 Live Demo](#-live-demo)
-- [🎥 Demo Video](#-demo-video)
+- [🎥 Demo Preview](#-demo-preview)
 - [✨ Features](#-features)
 - [🛠 Tech Stack](#-tech-stack)
 - [🏗 Project Architecture](#-project-architecture)
