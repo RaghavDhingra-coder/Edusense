@@ -40,9 +40,15 @@ The live deployment showcases the full EduSence AI experience including the web 
 
 ## 🎥 Demo Video
 
-[![Watch the demo](https://img.youtube.com/vi/VIDEO_ID/maxresdefault.jpg)](YOUTUBE_LINK)
+<div align="center">
 
-> Click the thumbnail above to watch EduSence AI in action. *(Replace `VIDEO_ID` and `YOUTUBE_LINK` with your actual YouTube video details.)*
+### 👉 [Watch Demo Video](readme_demo.mp4)
+
+https://github.com/user/EduSence-ai/assets/readme_demo.mp4
+
+</div>
+
+> Click the link above to watch EduSence AI in action with real-time classroom monitoring, student recognition, and engagement analytics.
 
 ---
 
