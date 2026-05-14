@@ -42,7 +42,7 @@ The live deployment showcases the full EduSence AI experience including the web 
 
 <div align="center">
 
-https://github.com/RaghavDhingra-coder/EduSence-ai/raw/main/readme_demo.mp4
+<video src="readme_demo.mp4" controls width="100%"></video>
 
 </div>
 
