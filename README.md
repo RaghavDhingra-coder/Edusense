@@ -834,6 +834,6 @@ deactivate                     # Deactivate virtual environment
 
 <br/>
 
-Made with ❤️ for education
+Made with ❤️ By Team CODE CRAFTERS
 
 </div>
