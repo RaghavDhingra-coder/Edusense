@@ -40,11 +40,9 @@ The live deployment showcases the full EduSence AI experience including the web 
 
 ## 🎥 Demo Video
 
-<div align="center">
+[![Watch Demo](https://img.youtube.com/vi/VIDEO_ID/0.jpg)](https://www.youtube.com/watch?v=VIDEO_ID)
 
-<video src="readme_demo.mp4" controls width="100%"></video>
-
-</div>
+👉 [Download Video](./readme_demo.mp4)
 
 ---
 
