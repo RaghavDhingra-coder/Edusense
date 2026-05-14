@@ -10,6 +10,7 @@
 [![OpenCV](https://img.shields.io/badge/OpenCV-4.x-5C3EE8?style=for-the-badge&logo=opencv&logoColor=white)](https://opencv.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](https://opensource.org/licenses/MIT)
 [![Status](https://img.shields.io/badge/Status-Production%20Ready-brightgreen?style=for-the-badge)]()
+[![Live Demo](https://img.shields.io/badge/🌐%20Live%20Demo-Visit%20Now-FF6B6B?style=for-the-badge)](https://edusense.facedetector.in/landing.html)
 
 <br/>
 
@@ -17,9 +18,23 @@
 
 <br/>
 
-[🚀 Quick Start](#-quick-start) · [📸 Features](#-features) · [🛠 Installation](#-installation-guide) · [📊 Architecture](#-project-architecture) · [🐛 Troubleshooting](#-troubleshooting)
+[🌐 Live Demo](https://edusense.facedetector.in/landing.html) · [🚀 Quick Start](#-quick-start) · [✨ Features](#-features) · [🛠 Installation](#-installation-guide) · [📊 Architecture](#-project-architecture) · [🐛 Troubleshooting](#-troubleshooting)
 
 </div>
+
+---
+
+## 🌐 Live Demo
+
+> **Try EduSence AI right now — no installation required.**
+
+<div align="center">
+
+### 👉 [https://edusense.facedetector.in/landing.html](https://edusense.facedetector.in/landing.html)
+
+</div>
+
+The live deployment showcases the full EduSence AI experience including the web dashboard, student registration, real-time monitoring, and engagement analytics.
 
 ---
 
@@ -33,6 +48,7 @@
 
 ## 📋 Table of Contents
 
+- [🌐 Live Demo](#-live-demo)
 - [🎥 Demo Video](#-demo-video)
 - [✨ Features](#-features)
 - [🛠 Tech Stack](#-tech-stack)
